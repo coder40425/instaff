@@ -6,6 +6,7 @@ const SEED_DATA = [
   {
     name: "Healthcare & Medical Services",
     slug: "healthcare",
+    sequence: 1,
     subs: [
       { name: "Visit Doctor",             slug: "visit-doctor" },
       { name: "General Physician",        slug: "general-physician" },
@@ -40,6 +41,7 @@ const SEED_DATA = [
   {
     name: "Medical Equipment",
     slug: "medical-equipment",
+    sequence: 2,
     subs: [
       { name: "Oxygen Cylinder",      slug: "oxygen-cylinder" },
       { name: "Oxygen Concentrator",  slug: "oxygen-concentrator" },
@@ -59,6 +61,7 @@ const SEED_DATA = [
   {
     name: "Domestic & Household Services",
     slug: "domestic",
+    sequence: 3,
     subs: [
       { name: "Maid",                 slug: "maid" },
       { name: "Part Time Maid",       slug: "part-time-maid" },
@@ -85,6 +88,7 @@ const SEED_DATA = [
   {
     name: "Home & Estate Care (Couple Services)",
     slug: "home-estate-care-couple",
+    sequence: 4,
     subs: [
       { name: "Husband & Wife Couple",     slug: "husband-wife-couple" },
       { name: "Caretaker Couple",          slug: "caretaker-couple" },
@@ -98,6 +102,7 @@ const SEED_DATA = [
   {
     name: "Driver Services",
     slug: "driver",
+    sequence: 5,
     subs: [
       { name: "Personal Driver",       slug: "personal-driver" },
       { name: "Family Driver",         slug: "family-driver" },
@@ -115,6 +120,7 @@ const SEED_DATA = [
   {
     name: "Security Services",
     slug: "security",
+    sequence: 6,
     subs: [
       { name: "Security Guard",         slug: "security-guard" },
       { name: "Armed Guard",            slug: "armed-guard" },
@@ -130,6 +136,7 @@ const SEED_DATA = [
   {
     name: "Office Support Staff",
     slug: "office-support",
+    sequence: 7,
     subs: [
       { name: "Receptionist",            slug: "receptionist" },
       { name: "Social Media Manager",    slug: "social-media-manager" },
@@ -154,6 +161,7 @@ const SEED_DATA = [
   {
     name: "BPO / Call Centre",
     slug: "bpo-call-centre",
+    sequence: 8,
     subs: [
       { name: "Voice Process",          slug: "voice-process" },
       { name: "Non Voice",              slug: "non-voice" },
@@ -166,6 +174,7 @@ const SEED_DATA = [
   {
     name: "Business & Corporate",
     slug: "business-corporate",
+    sequence: 9,
     subs: [
       { name: "HR Executive",                   slug: "hr-executive" },
       { name: "Recruiter",                      slug: "recruiter" },
@@ -187,6 +196,7 @@ const SEED_DATA = [
   {
     name: "IT & Software",
     slug: "it-software",
+    sequence: 10,
     subs: [
       { name: "Software Engineer",        slug: "software-engineer" },
       { name: "Software Developer",       slug: "software-developer" },
@@ -220,6 +230,7 @@ const SEED_DATA = [
   {
     name: "Technical Services",
     slug: "technical",
+    sequence: 11,
     subs: [
       { name: "Electrician",                 slug: "electrician" },
       { name: "Plumber",                     slug: "plumber" },
@@ -248,6 +259,7 @@ const SEED_DATA = [
   {
     name: "Hospitality & Hotel",
     slug: "hospitality",
+    sequence: 12,
     subs: [
       { name: "Waiter",              slug: "waiter" },
       { name: "Steward",             slug: "steward" },
@@ -266,6 +278,7 @@ const SEED_DATA = [
   {
     name: "Construction & Civil",
     slug: "construction-civil",
+    sequence: 13,
     subs: [
       { name: "Civil Engineer",     slug: "civil-engineer" },
       { name: "Site Engineer",      slug: "site-engineer" },
@@ -285,6 +298,7 @@ const SEED_DATA = [
   {
     name: "Mechanical & Industrial",
     slug: "mechanical-industrial",
+    sequence: 14,
     subs: [
       { name: "Fitter",                      slug: "fitter" },
       { name: "Turner",                      slug: "turner" },
@@ -337,6 +351,7 @@ const SEED_DATA = [
   {
     name: "Aviation & Airport",
     slug: "aviation-airport",
+    sequence: 15,
     subs: [
       { name: "Ground Staff",                 slug: "ground-staff" },
       { name: "Ramp Staff",                   slug: "ramp-staff" },
@@ -363,6 +378,7 @@ const SEED_DATA = [
   {
     name: "Retail & Store",
     slug: "retail-store",
+    sequence: 16,
     subs: [
       { name: "Store Manager",       slug: "store-manager" },
       { name: "Salesman",            slug: "salesman" },
@@ -379,6 +395,7 @@ const SEED_DATA = [
   {
     name: "Logistics & Warehouse",
     slug: "logistics-warehouse",
+    sequence: 17,
     subs: [
       { name: "Loader",             slug: "loader" },
       { name: "Unloader",           slug: "unloader" },
@@ -394,6 +411,7 @@ const SEED_DATA = [
   {
     name: "Factory & Manufacturing",
     slug: "factory-manufacturing",
+    sequence: 18,
     subs: [
       { name: "Machine Operator",  slug: "machine-operator" },
       { name: "Production Worker", slug: "production-worker" },
@@ -409,6 +427,7 @@ const SEED_DATA = [
   {
     name: "Agriculture & Farm",
     slug: "agriculture-farm",
+    sequence: 19,
     subs: [
       { name: "Farm Worker",         slug: "farm-worker" },
       { name: "Tractor Driver",      slug: "tractor-driver" },
@@ -423,6 +442,7 @@ const SEED_DATA = [
   {
     name: "Event & Hospitality Support",
     slug: "event-support",
+    sequence: 20,
     subs: [
       { name: "Event Helper",      slug: "event-helper" },
       { name: "Event Coordinator", slug: "event-coordinator" },
@@ -439,6 +459,7 @@ const SEED_DATA = [
   {
     name: "Beauty & Wellness",
     slug: "beauty-wellness",
+    sequence: 21,
     subs: [
       { name: "Beautician",               slug: "beautician" },
       { name: "Makeup Artist",            slug: "makeup-artist" },
@@ -455,6 +476,7 @@ const SEED_DATA = [
   {
     name: "Education",
     slug: "education",
+    sequence: 22,
     subs: [
       { name: "School Teacher",                 slug: "school-teacher" },
       { name: "Home Tutor",                     slug: "home-tutor" },
@@ -481,6 +503,7 @@ const SEED_DATA = [
   {
     name: "Pet Care Services",
     slug: "pet-care",
+    sequence: 23,
     subs: [
       { name: "Dog Walker",           slug: "dog-walker" },
       { name: "Pet Groomer",          slug: "pet-groomer" },
@@ -493,6 +516,7 @@ const SEED_DATA = [
   {
     name: "Cleaning & Facility Management",
     slug: "cleaning-facility",
+    sequence: 24,
     subs: [
       { name: "House Cleaner",           slug: "house-cleaner" },
       { name: "Office Cleaner",          slug: "office-cleaner" },
@@ -508,6 +532,7 @@ const SEED_DATA = [
   {
     name: "Professional Services",
     slug: "professional-services",
+    sequence: 25,
     subs: [
       { name: "Advocate",                    slug: "advocate" },
       { name: "Legal Advisor",               slug: "legal-advisor" },
@@ -526,6 +551,7 @@ const SEED_DATA = [
   {
     name: "Government & NGO Services",
     slug: "government-ngo",
+    sequence: 26,
     subs: [
       { name: "Survey Staff",         slug: "survey-staff" },
       { name: "Enumerator",           slug: "enumerator" },
@@ -536,6 +562,7 @@ const SEED_DATA = [
   {
     name: "Repair & Maintenance Services",
     slug: "repair-maintenance",
+    sequence: 27,
     subs: [
       { name: "Mobile Repair Technician",       slug: "mobile-repair-technician" },
       { name: "Laptop Repair Technician",       slug: "laptop-repair-technician" },
@@ -564,11 +591,18 @@ async function main() {
   let totalSubs = 0;
 
   for (const cat of SEED_DATA) {
-    const category = await prisma.category.upsert({
-      where:  { slug: cat.slug },
-      update: { name: cat.name },
-      create: { name: cat.name, slug: cat.slug },
-    });
+  const category = await prisma.category.upsert({
+  where: { slug: cat.slug },
+  update: {
+    name: cat.name,
+    sequence: cat.sequence,
+  },
+  create: {
+    name: cat.name,
+    slug: cat.slug,
+    sequence: cat.sequence,
+  },
+});
 
     for (const sub of cat.subs) {
       await prisma.subCategory.upsert({

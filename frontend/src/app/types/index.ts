@@ -30,6 +30,8 @@ export type EducationLevel =
   | 'GRADUATE'
   | 'POST_GRADUATE';
 
+  export type WorkerDirectorySort = "sequence" | "name";
+
 // ── Skill taxonomy types ──────────────────────────────────────────────────────
 
 export interface SubCategory {
@@ -44,6 +46,7 @@ export interface Category {
   id: string;
   name: string;
   slug: string;
+  sequence?: number;
   subCategories: SubCategory[];
 }
 
@@ -205,4 +208,15 @@ export interface RegisterRequest {
 export interface AuthResponse {
   token: string;
   user: User;
+}
+
+export interface WorkerDirectoryFilters {
+  categoryId?: string;
+  subCategoryId?: string;
+  subCategoryIds?: string;
+  search?: string;
+  city?: string;
+  isAvailable?: boolean;
+  isVerified?: boolean;
+  sort?: WorkerDirectorySort;
 }

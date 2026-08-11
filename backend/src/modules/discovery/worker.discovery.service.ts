@@ -2,56 +2,208 @@ import prisma from "../../config/prisma";
 
 const workerInclude = {
   user: {
-    select: { id: true, name: true, phone: true },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+    },
   },
   skills: {
     include: {
       subCategory: {
-        include: { category: true },
+        include: {
+          category: true,
+        },
       },
     },
   },
 } as const;
 
 export const getWorkers = async (filters: {
-  subCategoryIds?: string[];  // filter by one or more sub-category IDs
+  categoryId?: string;
+  subCategoryId?: string;
+  subCategoryIds?: string[];
+  search?: string;
   city?: string;
   isAvailable?: boolean;
   isVerified?: boolean;
+  sort?: "sequence" | "name";
 }) => {
-  return prisma.workerProfile.findMany({
-    where: {
-      // If subCategoryIds provided, worker must have at least one matching skill
-      ...(filters.subCategoryIds && filters.subCategoryIds.length > 0 && {
-        skills: {
-          some: {
-            subCategoryId: { in: filters.subCategoryIds },
+  const {
+    categoryId,
+    subCategoryId,
+    subCategoryIds,
+    search,
+    city,
+    isAvailable,
+    isVerified,
+    sort = "sequence",
+  } = filters;
+
+  const skillConditions: any[] = [];
+
+  if (categoryId) {
+    skillConditions.push({
+      skills: {
+        some: {
+          subCategory: {
+            categoryId,
           },
         },
-      }),
+      },
+    });
+  }
 
-      ...(filters.city && {
-        city: { equals: filters.city, mode: "insensitive" },
-      }),
+  if (subCategoryId) {
+    skillConditions.push({
+      skills: {
+        some: {
+          subCategoryId,
+        },
+      },
+    });
+  }
 
-      ...(filters.isAvailable !== undefined && {
-        isAvailable: filters.isAvailable,
-      }),
+  if (subCategoryIds && subCategoryIds.length > 0) {
+    skillConditions.push({
+      skills: {
+        some: {
+          subCategoryId: {
+            in: subCategoryIds,
+          },
+        },
+      },
+    });
+  }
 
-      ...(filters.isVerified !== undefined && {
-        isVerified: filters.isVerified,
-      }),
+  const where: any = {
+    ...(skillConditions.length > 0 && {
+      AND: skillConditions,
+    }),
+
+    ...(city && {
+      city: {
+        equals: city,
+        mode: "insensitive",
+      },
+    }),
+
+    ...(isAvailable !== undefined && {
+      isAvailable,
+    }),
+
+    ...(isVerified !== undefined && {
+      isVerified,
+    }),
+  };
+
+  if (search?.trim()) {
+    const keyword = search.trim();
+
+    where.OR = [
+      {
+        user: {
+          name: {
+            contains: keyword,
+            mode: "insensitive",
+          },
+        },
+      },
+      {
+        user: {
+          phone: {
+            contains: keyword,
+          },
+        },
+      },
+      {
+        city: {
+          contains: keyword,
+          mode: "insensitive",
+        },
+      },
+      {
+        state: {
+          contains: keyword,
+          mode: "insensitive",
+        },
+      },
+      {
+        skills: {
+          some: {
+            subCategory: {
+              name: {
+                contains: keyword,
+                mode: "insensitive",
+              },
+            },
+          },
+        },
+      },
+      {
+        skills: {
+          some: {
+            subCategory: {
+              category: {
+                name: {
+                  contains: keyword,
+                  mode: "insensitive",
+                },
+              },
+            },
+          },
+        },
+      },
+    ];
+  }
+
+  const workers = await prisma.workerProfile.findMany({
+    where,
+    include: workerInclude,
+  });
+
+  if (sort === "sequence") {
+    workers.sort((a, b) => {
+      const aSequence =
+        a.skills[0]?.subCategory?.category?.sequence ?? 999;
+
+      const bSequence =
+        b.skills[0]?.subCategory?.category?.sequence ?? 999;
+
+      if (aSequence !== bSequence) {
+        return aSequence - bSequence;
+      }
+
+      return (a.user?.name ?? "").localeCompare(
+        b.user?.name ?? ""
+      );
+    });
+  }
+
+  if (sort === "name") {
+    workers.sort((a, b) =>
+      (a.user?.name ?? "").localeCompare(
+        b.user?.name ?? ""
+      )
+    );
+  }
+
+  return workers;
+};
+
+export const getWorkerById = async (
+  workerId: string
+) => {
+  const worker = await prisma.workerProfile.findUnique({
+    where: {
+      id: workerId,
     },
     include: workerInclude,
   });
-};
 
-export const getWorkerById = async (workerId: string) => {
-  const worker = await prisma.workerProfile.findUnique({
-    where: { id: workerId },
-    include: workerInclude,
-  });
+  if (!worker) {
+    throw new Error("Worker not found");
+  }
 
-  if (!worker) throw new Error("Worker not found");
   return worker;
 };

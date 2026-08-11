@@ -16,6 +16,7 @@ import { Checkbox } from '../../components/ui/checkbox';
 import { useAuth } from '../../hooks/useAuth';
 import { profileService, categoryService, type UpdateWorkerProfilePayload } from '../../services/api';
 import type { EducationLevel, MaritalStatus, Category } from '../../types';
+import { ChevronDown, Search } from 'lucide-react';
 
 const LANGUAGE_OPTIONS = [
   'Hindi', 'English', 'Bengali', 'Telugu', 'Marathi',
@@ -63,6 +64,10 @@ export default function WorkerProfile() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
 
+  // ── Skill picker UI state (display only — does not change form data shape) ──
+  const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState('');
+
   const { register, handleSubmit, control, reset, watch, setValue } =
     useForm<WorkerProfileForm>({ defaultValues: { languagesKnown: [], skillIds: [], canRelocate: false } });
 
@@ -75,7 +80,7 @@ export default function WorkerProfile() {
 
   const { data: categoriesData } = useQuery<Category[]>({
     queryKey: ['categories'],
-    queryFn: categoryService.getAll,
+    queryFn: () => categoryService.getAll("sequence"),
   });
 
   const categories: Category[] = categoriesData ?? [];
@@ -110,6 +115,16 @@ export default function WorkerProfile() {
         city:                   existingProfile.city ?? '',
         state:                  existingProfile.state ?? '',
       });
+
+      // Auto-expand the first category that already has selected skills, so
+      // returning workers immediately see their existing selections.
+      const firstCategoryWithSkill = categories.find((cat) =>
+        cat.subCategories.some((sub) => existingSkillIds.includes(sub.id))
+      );
+      if (firstCategoryWithSkill) {
+        setOpenCategoryId(firstCategoryWithSkill.id);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }
   }, [existingProfile, reset]);
 
@@ -129,6 +144,13 @@ export default function WorkerProfile() {
       : [...selectedSkillIds, subCategoryId];
     setValue('skillIds', updated);
   };
+
+  const filteredCategories = categoryFilter.trim()
+    ? categories.filter((cat) => cat.name.toLowerCase().includes(categoryFilter.trim().toLowerCase()))
+    : categories;
+
+  const selectedCountInCategory = (cat: Category) =>
+    cat.subCategories.filter((sub) => selectedSkillIds.includes(sub.id)).length;
 
   const onSubmit = async (data: WorkerProfileForm) => {
     if (!data.skillIds || data.skillIds.length === 0) {
@@ -221,47 +243,116 @@ export default function WorkerProfile() {
               </div>
             </Section>
 
-            {/* 2. Skills */}
+            {/* 2. Skills — category → work type picker, aligned with the Worker Directory filters */}
             <Section title="Skills">
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                Select all skills you offer. You can select multiple.
-              </p>
-              {categories.length === 0 && (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                  Select the categories and work types you offer. You can select multiple.
+                </p>
+                {selectedSkillIds.length > 0 && (
+                  <Badge variant="secondary" className="text-xs flex-shrink-0">
+                    {selectedSkillIds.length} selected
+                  </Badge>
+                )}
+              </div>
+
+              {categories.length === 0 ? (
                 <p className="text-sm text-neutral-400">Loading skills…</p>
-              )}
-              {categories.map((cat) => (
-                <div key={cat.id} className="space-y-2">
-                  <p className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">{cat.name}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {cat.subCategories.map((sub) => {
-                      const selected = selectedSkillIds.includes(sub.id);
-                      return (
-                        <button
-                          key={sub.id}
-                          type="button"
-                          onClick={() => toggleSkill(sub.id)}
-                          className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                            selected
-                              ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white'
-                              : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-300 dark:border-neutral-600 hover:border-neutral-500'
-                          }`}
-                        >
-                          {sub.name}
-                        </button>
-                      );
-                    })}
+              ) : (
+                <>
+                  {/* Category search — helps navigate a long category list */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                    <Input
+                      value={categoryFilter}
+                      onChange={(e) => setCategoryFilter(e.target.value)}
+                      placeholder="Search categories..."
+                      className="pl-9"
+                    />
                   </div>
-                </div>
-              ))}
+
+                  {/* Accordion of categories, each expanding to its work types */}
+                  <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 divide-y divide-neutral-200 dark:divide-neutral-800 max-h-[420px] overflow-y-auto">
+                    {filteredCategories.length === 0 ? (
+                      <p className="text-sm text-neutral-400 text-center py-6">
+                        No categories match &quot;{categoryFilter}&quot;
+                      </p>
+                    ) : (
+                      filteredCategories.map((cat) => {
+                        const isOpen = openCategoryId === cat.id;
+                        const count = selectedCountInCategory(cat);
+                        return (
+                          <div key={cat.id}>
+                            <button
+                              type="button"
+                              onClick={() => setOpenCategoryId(isOpen ? null : cat.id)}
+                              className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
+                            >
+                              <span className="flex items-center gap-2 text-sm font-medium text-neutral-800 dark:text-neutral-200 min-w-0">
+                                <ChevronDown
+                                  className={`w-4 h-4 flex-shrink-0 text-neutral-400 transition-transform ${isOpen ? '' : '-rotate-90'}`}
+                                />
+                                <span className="truncate">{cat.name}</span>
+                              </span>
+                              {count > 0 && (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-xs flex-shrink-0 bg-black dark:bg-white text-white dark:text-black"
+                                >
+                                  {count}
+                                </Badge>
+                              )}
+                            </button>
+                            {isOpen && (
+                              <div className="flex flex-wrap gap-2 px-3 pb-3 pt-1">
+                                {cat.subCategories.map((sub) => {
+                                  const selected = selectedSkillIds.includes(sub.id);
+                                  return (
+                                    <button
+                                      key={sub.id}
+                                      type="button"
+                                      onClick={() => toggleSkill(sub.id)}
+                                      className={`px-3 py-1 rounded-full text-sm border transition-colors ${
+                                        selected
+                                          ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white'
+                                          : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-300 dark:border-neutral-600 hover:border-neutral-500'
+                                      }`}
+                                    >
+                                      {sub.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Selected skills summary, grouped implicitly, removable inline */}
               {selectedSkillIds.length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-1">
-                  <span className="text-xs text-neutral-500 mr-1">Selected:</span>
-                  {categories
-                    .flatMap((c) => c.subCategories)
-                    .filter((s) => selectedSkillIds.includes(s.id))
-                    .map((s) => (
-                      <Badge key={s.id} variant="secondary" className="text-xs">{s.name}</Badge>
-                    ))}
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-500">
+                    Selected skills — click to remove:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {categories
+                      .flatMap((c) => c.subCategories)
+                      .filter((s) => selectedSkillIds.includes(s.id))
+                      .map((s) => (
+                        <Badge
+                          key={s.id}
+                          variant="secondary"
+                          className="text-xs cursor-pointer"
+                          onClick={() => toggleSkill(s.id)}
+                        >
+                          {s.name} ×
+                        </Badge>
+                      ))}
+                  </div>
                 </div>
               )}
             </Section>

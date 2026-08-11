@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, LoginRequest, RegisterRequest } from '../types';
+import type { AuthResponse, LoginRequest, RegisterRequest, WorkerDirectoryFilters } from '../types';
 
 const API_BASE =
   ((import.meta as any).env?.VITE_API_URL as string) ||
@@ -43,22 +43,23 @@ export const authService = {
 };
 
 export const categoryService = {
-  getAll: async () => {
-    const response = await api.get('/worker/categories');
+  getAll: async (sort: 'sequence' | 'name' = 'sequence') => {
+    const response = await api.get('/categories', {
+      params: { sort },
+    });
+
     return response.data.data;
   },
 };
 
 export const workerService = {
-  getAll: async (params?: {
-    subCategoryIds?: string;
-    city?: string;
-    isAvailable?: boolean;
-    isVerified?: boolean;
-  }) => {
-    const response = await api.get('/workers', { params });
-    return response.data.data;
-  },
+  getAll: async (params?: WorkerDirectoryFilters) => {
+  const response = await api.get('/workers', {
+    params,
+  });
+
+  return response.data.data;
+},
   getById: async (id: string) => {
     const response = await api.get(`/workers/${id}`);
     return response.data.data;
