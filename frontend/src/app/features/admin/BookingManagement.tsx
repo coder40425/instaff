@@ -7,7 +7,7 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { adminService } from '../../services/api';
-import { Calendar, MapPin, DollarSign, RefreshCw, User, Phone } from 'lucide-react';
+import { Calendar, MapPin, IndianRupee, RefreshCw, User, Phone, AlertTriangle, Tag, Hash } from 'lucide-react';
 
 export default function BookingManagement() {
   const queryClient = useQueryClient();
@@ -90,16 +90,28 @@ export default function BookingManagement() {
     return <Badge className={colors[status] || ''}>{status}</Badge>;
   };
 
+  // Defensive field readers — the admin bookings payload may expose these
+  // as flattened fields (customerName) and/or nested relations (customer.name).
+  // We try both without assuming either shape, so nothing breaks either way.
+  const getCustomerName = (b: any) => b.customerName || b.customer?.name || 'N/A';
+  const getCustomerPhone = (b: any) => b.customerPhone || b.customer?.phone || null;
+  const getWorkerName = (b: any) => b.workerName || b.worker?.user?.name || 'N/A';
+  const getWorkerPhone = (b: any) => b.workerPhone || b.worker?.user?.phone || null;
+  const getCategory = (b: any) => b.categoryName || b.subCategory?.category?.name || null;
+  const getServiceType = (b: any) => b.serviceCategory || b.subCategory?.name || 'Service';
+
   return (
     <AdminLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Booking Management</h1>
-          <p className="text-neutral-600 dark:text-neutral-400 mt-1">Oversee and manage all bookings</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">Booking Management</h1>
+          <p className="text-neutral-600 dark:text-neutral-400 mt-1 text-sm sm:text-base">
+            Oversee and manage all bookings
+          </p>
         </div>
 
         {isLoading ? (
-          <div className="text-center py-12">Loading bookings...</div>
+          <div className="text-center py-12 text-neutral-500">Loading bookings...</div>
         ) : bookings.length === 0 ? (
           <Card>
             <CardContent className="p-12 text-center">
@@ -109,34 +121,72 @@ export default function BookingManagement() {
         ) : (
           <div className="space-y-4">
             {bookings.map((booking: any) => (
-              <Card key={booking.id}>
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle>{booking.serviceCategory}</CardTitle>
-                      <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5 font-mono">
-                        Booking ID: {booking.id}
-                      </p>
-                      <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-                        <p>Customer: {booking.customerName || 'N/A'}</p>
-                        <p>Worker: {booking.workerName || 'N/A'}</p>
+              <Card
+                key={booking.id}
+                className={booking.replacementRequested ? 'border-orange-300 dark:border-orange-800' : ''}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex justify-between items-start gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <CardTitle className="text-lg">{getServiceType(booking)}</CardTitle>
+                        {getCategory(booking) && (
+                          <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                            <Tag className="w-3 h-3" />
+                            {getCategory(booking)}
+                          </Badge>
+                        )}
                       </div>
+                      <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1 font-mono flex items-center gap-1">
+                        <Hash className="w-3 h-3" />
+                        {booking.id}
+                      </p>
                     </div>
                     {getStatusBadge(booking.status)}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  {/* Customer / Worker block */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                      <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">Customer</p>
+                      <div className="flex items-center gap-1.5 text-sm">
+                        <User className="w-3.5 h-3.5 text-neutral-400 flex-shrink-0" />
+                        <span className="font-medium truncate">{getCustomerName(booking)}</span>
+                      </div>
+                      {getCustomerPhone(booking) && (
+                        <div className="flex items-center gap-1.5 text-xs text-neutral-500 mt-1">
+                          <Phone className="w-3 h-3 flex-shrink-0" />
+                          <span>{getCustomerPhone(booking)}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                      <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">Current Worker</p>
+                      <div className="flex items-center gap-1.5 text-sm">
+                        <User className="w-3.5 h-3.5 text-neutral-400 flex-shrink-0" />
+                        <span className="font-medium truncate">{getWorkerName(booking)}</span>
+                      </div>
+                      {getWorkerPhone(booking) && (
+                        <div className="flex items-center gap-1.5 text-xs text-neutral-500 mt-1">
+                          <Phone className="w-3 h-3 flex-shrink-0" />
+                          <span>{getWorkerPhone(booking)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                     <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-neutral-500" />
-                      <span>{new Date(booking.createdAt).toLocaleDateString()}</span>
+                      <Calendar className="w-4 h-4 text-neutral-500 flex-shrink-0" />
+                      <span>{new Date(booking.scheduledDate || booking.createdAt).toLocaleString()}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-neutral-500" />
-                      <span>{booking.city}</span>
+                      <MapPin className="w-4 h-4 text-neutral-500 flex-shrink-0" />
+                      <span className="truncate">{booking.city}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-neutral-500" />
+                      <IndianRupee className="w-4 h-4 text-neutral-500 flex-shrink-0" />
                       <span>₹{booking.servicePrice}</span>
                     </div>
                   </div>
@@ -149,21 +199,33 @@ export default function BookingManagement() {
 
                   {/* Show replacement request info if flagged */}
                   {booking.replacementRequested && (
-                    <div className="p-3 bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-lg">
-                      <p className="text-sm font-semibold text-orange-700 dark:text-orange-300">
-                        Replacement Requested
-                      </p>
-                      {booking.replacementReason && (
-                        <p className="text-sm text-orange-600 dark:text-orange-400 mt-0.5">
-                          Reason: {booking.replacementReason}
+                    <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-lg">
+                      <AlertTriangle className="w-4 h-4 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold text-orange-700 dark:text-orange-300">
+                          Replacement Requested
                         </p>
-                      )}
+                        {booking.replacementReason && (
+                          <p className="text-sm text-orange-600 dark:text-orange-400 mt-0.5">
+                            {booking.replacementReason}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
 
                   <div className="flex flex-wrap gap-2 pt-2">
                     {booking.status !== 'COMPLETED' && booking.status !== 'CANCELLED' && (
                       <>
+                        <Button
+                          size="sm"
+                          variant={booking.replacementRequested ? 'default' : 'outline'}
+                          onClick={() => handleOpenReassign(booking.id)}
+                          className="gap-1.5"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          {booking.replacementRequested ? 'Find Replacement' : 'Reassign Worker'}
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -180,14 +242,6 @@ export default function BookingManagement() {
                         >
                           Force Cancel
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleOpenReassign(booking.id)}
-                        >
-                          <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-                          Reassign Worker
-                        </Button>
                       </>
                     )}
                   </div>
@@ -202,11 +256,11 @@ export default function BookingManagement() {
       <Dialog open={!!reassignBookingId} onOpenChange={(open) => { if (!open) handleCloseReassign(); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Reassign Worker</DialogTitle>
+            <DialogTitle>Find Replacement Worker</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              Select a verified, available worker in the same city and skill category. The booking will be reset to PENDING for the new worker to accept.
+              Matching verified, available workers in the same city and skill category. The booking will be reset to PENDING for the new worker to accept.
             </p>
 
             {candidatesLoading ? (
@@ -222,19 +276,24 @@ export default function BookingManagement() {
                 {candidates.map((worker: any) => (
                   <div
                     key={worker.id}
-                    className="flex items-center justify-between p-3 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:border-black dark:hover:border-white transition-colors"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:border-black dark:hover:border-white transition-colors"
                   >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <User className="w-3.5 h-3.5 text-neutral-400" />
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <User className="w-3.5 h-3.5 text-neutral-400 flex-shrink-0" />
                         <span className="font-semibold text-sm">{worker.user?.name || 'N/A'}</span>
                         <Badge variant="secondary" className="text-xs">{worker.skillCategory}</Badge>
+                        {worker.isVerified && (
+                          <Badge className="text-xs bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300">
+                            Verified
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-neutral-500">
-                        <Phone className="w-3 h-3" />
+                        <Phone className="w-3 h-3 flex-shrink-0" />
                         <span>{worker.user?.phone || 'N/A'}</span>
                       </div>
-                      <div className="flex gap-3 text-xs text-neutral-500">
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-neutral-500">
                         <span>{worker.city || 'N/A'}</span>
                         <span>·</span>
                         <span>{worker.experience ?? 0} yrs exp</span>
@@ -250,6 +309,7 @@ export default function BookingManagement() {
                     </div>
                     <Button
                       size="sm"
+                      className="flex-shrink-0"
                       onClick={() =>
                         reassignMutation.mutate({
                           bookingId: reassignBookingId!,

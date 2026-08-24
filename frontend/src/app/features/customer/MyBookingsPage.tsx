@@ -6,12 +6,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Textarea } from '../../components/ui/textarea';
+import { Label } from '../../components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 import { bookingService, reviewService } from '../../services/api';
-import { Calendar, MapPin, DollarSign, Star } from 'lucide-react';
+import { Calendar, MapPin, DollarSign, Star, RefreshCw, AlertTriangle } from 'lucide-react';
 
 export default function MyBookingsPage() {
   const queryClient = useQueryClient();
-  const [replacementReason, setReplacementReason] = useState<Record<string, string>>({});
+
+  // Replacement dialog state
+  const [replacementBooking, setReplacementBooking] = useState<any>(null);
+  const [replacementReason, setReplacementReason] = useState('');
+  const [replacementDetails, setReplacementDetails] = useState('');
+
   const [reviewOpen, setReviewOpen] = useState<Record<string, boolean>>({});
   const [reviewRating, setReviewRating] = useState<Record<string, number>>({});
   const [reviewComment, setReviewComment] = useState<Record<string, string>>({});
@@ -55,11 +62,15 @@ export default function MyBookingsPage() {
   });
 
   const requestReplacementMutation = useMutation({
+    // Same API call as before — reason text carries any optional details appended.
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       bookingService.requestReplacement(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer-bookings'] });
-      toast.success('Replacement requested');
+      toast.success('Replacement requested — our admin team will handle it shortly');
+      setReplacementBooking(null);
+      setReplacementReason('');
+      setReplacementDetails('');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message || 'Failed to request replacement');
@@ -92,13 +103,31 @@ export default function MyBookingsPage() {
     },
   });
 
-  const handleRequestReplacement = (id: string) => {
-    const reason = replacementReason[id]?.trim();
+  const handleOpenReplacement = (booking: any) => {
+    setReplacementBooking(booking);
+    setReplacementReason('');
+    setReplacementDetails('');
+  };
+
+  const handleCloseReplacement = () => {
+    setReplacementBooking(null);
+    setReplacementReason('');
+    setReplacementDetails('');
+  };
+
+  const handleSubmitReplacement = () => {
+    if (!replacementBooking) return;
+    const reason = replacementReason.trim();
     if (!reason) {
       toast.error('Please enter a reason for replacement');
       return;
     }
-    requestReplacementMutation.mutate({ id, reason });
+    // Preserve the exact API contract: a single `reason` string.
+    // Optional details, if provided, are appended to keep the payload unchanged.
+    const fullReason = replacementDetails.trim()
+      ? `${reason} — ${replacementDetails.trim()}`
+      : reason;
+    requestReplacementMutation.mutate({ id: replacementBooking.id, reason: fullReason });
   };
 
   const handleSubmitReview = (bookingId: string) => {
@@ -141,16 +170,30 @@ export default function MyBookingsPage() {
     return <Badge className={colors[status] || ''}>{status}</Badge>;
   };
 
+  const ReplacementButton = ({ booking }: { booking: any }) => (
+    <Button
+      size="sm"
+      variant="outline"
+      className="gap-1.5"
+      onClick={() => handleOpenReplacement(booking)}
+    >
+      <RefreshCw className="w-3.5 h-3.5" />
+      Request Replacement
+    </Button>
+  );
+
   return (
     <CustomerLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">My Bookings</h1>
-          <p className="text-neutral-600 dark:text-neutral-400 mt-1">Manage your service bookings</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">My Bookings</h1>
+          <p className="text-neutral-600 dark:text-neutral-400 mt-1 text-sm sm:text-base">
+            Manage your service bookings
+          </p>
         </div>
 
         {isLoading ? (
-          <div className="text-center py-12">Loading bookings...</div>
+          <div className="text-center py-12 text-neutral-500">Loading bookings...</div>
         ) : bookings.length === 0 ? (
           <Card>
             <CardContent className="p-12 text-center">
@@ -162,31 +205,31 @@ export default function MyBookingsPage() {
             {bookings.map((booking: any) => (
               <Card key={booking.id}>
                 <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle>{booking.serviceCategory}</CardTitle>
-                      <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5 font-mono">
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="min-w-0">
+                      <CardTitle className="truncate">{booking.serviceCategory}</CardTitle>
+                      <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5 font-mono truncate">
                         Booking ID: {booking.id}
                       </p>
-                      <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                      <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1 truncate">
                         Worker: {booking.workerName || 'N/A'}
                       </p>
                     </div>
-                    {getStatusBadge(booking.status)}
+                    <div className="flex-shrink-0">{getStatusBadge(booking.status)}</div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                     <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-neutral-500" />
+                      <Calendar className="w-4 h-4 text-neutral-500 flex-shrink-0" />
                       <span>{new Date(booking.createdAt).toLocaleDateString()}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-neutral-500" />
-                      <span>{booking.city}</span>
+                      <MapPin className="w-4 h-4 text-neutral-500 flex-shrink-0" />
+                      <span className="truncate">{booking.city}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-neutral-500" />
+                      <DollarSign className="w-4 h-4 text-neutral-500 flex-shrink-0" />
                       <span>₹{booking.servicePrice}</span>
                     </div>
                   </div>
@@ -203,12 +246,27 @@ export default function MyBookingsPage() {
                     </div>
                   )}
 
+                  {/* Show a pending-replacement banner if backend flags it */}
+                  {booking.replacementRequested && (
+                    <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-lg">
+                      <AlertTriangle className="w-4 h-4 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold text-orange-700 dark:text-orange-300">
+                          Replacement Requested
+                        </p>
+                        <p className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
+                          Our admin team has been notified and will assign a replacement worker.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap gap-2 pt-2">
                     {booking.status === 'PENDING' && (
                       <p className="text-sm text-neutral-500 w-full">Waiting for worker response...</p>
                     )}
 
-                    {booking.status === 'ACCEPTED' && (
+                    {booking.status === 'ACCEPTED' && !booking.replacementRequested && (
                       <>
                         <Button size="sm" onClick={() => startServiceMutation.mutate(booking.id)} disabled={startServiceMutation.isPending}>
                           Start Service
@@ -216,17 +274,7 @@ export default function MyBookingsPage() {
                         <Button size="sm" variant="outline" onClick={() => markNoShowMutation.mutate(booking.id)} disabled={markNoShowMutation.isPending}>
                           Mark No-Show
                         </Button>
-                        <div className="flex gap-2 w-full items-center">
-                          <input
-                            className="flex-1 border rounded px-2 py-1 text-sm"
-                            placeholder="Reason for replacement..."
-                            value={replacementReason[booking.id] || ''}
-                            onChange={(e) => setReplacementReason((prev) => ({ ...prev, [booking.id]: e.target.value }))}
-                          />
-                          <Button size="sm" variant="outline" onClick={() => handleRequestReplacement(booking.id)} disabled={requestReplacementMutation.isPending}>
-                            Request Replacement
-                          </Button>
-                        </div>
+                        <ReplacementButton booking={booking} />
                         <Button size="sm" variant="destructive" onClick={() => cancelBookingMutation.mutate(booking.id)} disabled={cancelBookingMutation.isPending}>
                           Cancel
                         </Button>
@@ -254,7 +302,7 @@ export default function MyBookingsPage() {
                           /* Review form */
                           <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-4 space-y-3 bg-neutral-50 dark:bg-neutral-800">
                             <p className="text-sm font-semibold">Rate your experience with {booking.workerName}</p>
-                            <div className="flex gap-1">
+                            <div className="flex gap-1 flex-wrap">
                               {[1, 2, 3, 4, 5].map((star) => (
                                 <button
                                   key={star}
@@ -306,18 +354,8 @@ export default function MyBookingsPage() {
                       </div>
                     )}
 
-                    {booking.status === 'NO_SHOW' && (
-                      <div className="flex gap-2 w-full items-center">
-                        <input
-                          className="flex-1 border rounded px-2 py-1 text-sm"
-                          placeholder="Reason for replacement..."
-                          value={replacementReason[booking.id] || ''}
-                          onChange={(e) => setReplacementReason((prev) => ({ ...prev, [booking.id]: e.target.value }))}
-                        />
-                        <Button size="sm" variant="outline" onClick={() => handleRequestReplacement(booking.id)} disabled={requestReplacementMutation.isPending}>
-                          Request Replacement
-                        </Button>
-                      </div>
+                    {booking.status === 'NO_SHOW' && !booking.replacementRequested && (
+                      <ReplacementButton booking={booking} />
                     )}
                   </div>
                 </CardContent>
@@ -326,6 +364,60 @@ export default function MyBookingsPage() {
           </div>
         )}
       </div>
+
+      {/* ── Replacement Request Dialog ────────────────────────────────────────── */}
+      <Dialog open={!!replacementBooking} onOpenChange={(open) => { if (!open) handleCloseReplacement(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request Replacement</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">
+              Let us know what happened. Our admin team will review and assign a replacement worker for this booking.
+            </p>
+
+            <div className="space-y-2">
+              <Label htmlFor="replacement-reason">
+                Reason <span className="text-red-500">*</span>
+              </Label>
+              <Textarea
+                id="replacement-reason"
+                placeholder="e.g. Worker did not show up, worker was unprofessional…"
+                rows={2}
+                value={replacementReason}
+                onChange={(e) => setReplacementReason(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="replacement-details">Additional Details (Optional)</Label>
+              <Textarea
+                id="replacement-details"
+                placeholder="Any extra context that might help admin…"
+                rows={2}
+                value={replacementDetails}
+                onChange={(e) => setReplacementDetails(e.target.value)}
+              />
+            </div>
+
+            <div className="flex items-start gap-2 p-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-xs text-neutral-500">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              This booking will be flagged for admin review — they'll handle finding and assigning a replacement worker.
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={handleCloseReplacement}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitReplacement}
+              disabled={requestReplacementMutation.isPending}
+            >
+              {requestReplacementMutation.isPending ? 'Submitting…' : 'Submit Request'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </CustomerLayout>
   );
 }

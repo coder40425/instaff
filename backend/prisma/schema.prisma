@@ -11,10 +11,11 @@ model Category {
   id            String        @id @default(cuid())
   name          String        @unique
   slug          String        @unique
-  sequence Int?
+  sequence      Int?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @default(now()) @updatedAt
   subCategories SubCategory[]
+  requirements  Requirement[]
 }
 
 model SubCategory {
@@ -27,6 +28,7 @@ model SubCategory {
   bookings     Booking[]
   category     Category      @relation(fields: [categoryId], references: [id])
   workerSkills WorkerSkill[]
+  requirements Requirement[]
 
   @@index([categoryId])
 }
@@ -55,21 +57,22 @@ model PlatformPaymentInfo {
 }
 
 model User {
-  id               String           @id @default(cuid())
-  name             String
-  phone            String           @unique
-  password         String
-  role             Role
-  createdAt        DateTime         @default(now())
-  isActive         Boolean          @default(true)
-  updatedAt        DateTime         @default(now()) @updatedAt
-  customerBookings Booking[]        @relation("CustomerBookings")
-  workerBookings   Booking[]        @relation("WorkerBookings")
-  customerProfile  CustomerProfile?
-  employerProfile  EmployerProfile?
-  customerReviews  Review[]         @relation("CustomerReviews")
-  workerReviews    Review[]         @relation("WorkerReviews")
-  workerProfile    WorkerProfile?
+  id                  String           @id @default(cuid())
+  name                String
+  phone               String           @unique
+  password            String
+  role                Role
+  createdAt           DateTime         @default(now())
+  isActive            Boolean          @default(true)
+  updatedAt           DateTime         @default(now()) @updatedAt
+  customerBookings    Booking[]        @relation("CustomerBookings")
+  workerBookings      Booking[]        @relation("WorkerBookings")
+  customerProfile     CustomerProfile?
+  employerProfile     EmployerProfile?
+  customerReviews     Review[]         @relation("CustomerReviews")
+  workerReviews       Review[]         @relation("WorkerReviews")
+  createdRequirements Requirement[]    @relation("CreatedRequirements")
+  workerProfile       WorkerProfile?
 }
 
 model CustomerProfile {
@@ -87,30 +90,34 @@ model CustomerProfile {
 }
 
 model WorkerProfile {
-  id                     String          @id @default(cuid())
-  userId                 String          @unique
-  aadhaarNumber          String          @unique
+  id                     String                 @id @default(cuid())
+  userId                 String                 @unique
+  aadhaarNumber          String                 @unique
   experience             Int
   expectedSalary         Float
-  isAvailable            Boolean         @default(true)
+  employmentTypes        EmploymentType[]
+  workMode               WorkMode?
+  workGeography          WorkGeography?
+  preferredCountries     String[]
+  isAvailable            Boolean                @default(true)
   city                   String?
-  createdAt              DateTime        @default(now())
+  createdAt              DateTime               @default(now())
   gender                 Gender?
-  isSuspended            Boolean         @default(false)
-  isVerified             Boolean         @default(false)
+  isSuspended            Boolean                @default(false)
+  isVerified             Boolean                @default(false)
   latitude               Float?
   longitude              Float?
-  rating                 Float           @default(0)
+  rating                 Float                  @default(0)
   rejectionReason        String?
   state                  String?
   suspensionReason       String?
-  totalReviews           Int             @default(0)
-  updatedAt              DateTime        @default(now()) @updatedAt
+  totalReviews           Int                    @default(0)
+  updatedAt              DateTime               @default(now()) @updatedAt
   verifiedAt             DateTime?
   verifiedBy             String?
   aboutYourself          String?
   availableTimings       String?
-  canRelocate            Boolean         @default(false)
+  canRelocate            Boolean                @default(false)
   certifications         String?
   dateOfBirth            DateTime?
   education              EducationLevel?
@@ -125,9 +132,10 @@ model WorkerProfile {
   previousCompanies      String?
   profilePhotoUrl        String?
   weight                 Float?
-  user                   User            @relation(fields: [userId], references: [id])
+  user                   User                   @relation(fields: [userId], references: [id])
   skills                 WorkerSkill[]
   wallet                 WorkerWallet?
+  requirementCandidates  RequirementCandidate[]
 }
 
 model EmployerProfile {
@@ -323,4 +331,131 @@ enum TransactionType {
   CREDIT
   DEBIT
 }
- 
+
+enum EmploymentType {
+  PERMANENT
+  CONTRACT
+  FREELANCE
+  PROJECT_BASED
+  PART_TIME
+  FULL_TIME
+  TEMPORARY
+  ON_CALL
+  INTERNSHIP
+}
+
+enum WorkMode {
+  ON_SITE
+  REMOTE
+}
+
+enum WorkGeography {
+  DOMESTIC
+  INTERNATIONAL
+}
+
+enum RequirementStatus {
+  DRAFT
+  OPEN
+  MATCHING
+  FILLED
+  CANCELLED
+  EXPIRED
+  COMPLETED
+}
+
+enum AssignmentMode {
+  PREFERRED_SINGLE
+  SINGLE_WITH_BACKUP
+  BULK_WORKFORCE
+}
+
+enum RequirementCandidateStatus {
+  RECOMMENDED
+  SHORTLISTED
+  PRIMARY
+  BACKUP
+  ASSIGNED
+  REJECTED
+  EXPIRED
+}
+
+model Requirement {
+  id String @id @default(cuid())
+
+  createdById String
+
+  categoryId    String
+  subCategoryId String
+
+  city    String
+  state   String?
+  address String?
+
+  shiftTiming   String?
+  salaryBudget  Float?
+  minExperience Int     @default(0)
+
+  joiningDate         DateTime
+  requiredWorkerCount Int              @default(1)
+  employmentTypes     EmploymentType[]
+  workMode            WorkMode?
+  workGeography       WorkGeography?
+  preferredCountries  String[]
+
+  assignmentMode AssignmentMode @default(SINGLE_WITH_BACKUP)
+  backupPoolSize Int            @default(10)
+
+  status RequirementStatus @default(DRAFT)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  openedAt    DateTime?
+  completedAt DateTime?
+  cancelledAt DateTime?
+
+  createdBy   User        @relation("CreatedRequirements", fields: [createdById], references: [id])
+  category    Category    @relation(fields: [categoryId], references: [id])
+  subCategory SubCategory @relation(fields: [subCategoryId], references: [id])
+
+  candidates RequirementCandidate[]
+
+  @@index([createdById])
+  @@index([categoryId])
+  @@index([subCategoryId])
+  @@index([status])
+  @@index([city])
+  @@index([joiningDate])
+}
+
+model RequirementCandidate {
+  id String @id @default(cuid())
+
+  requirementId   String
+  workerProfileId String
+
+  status RequirementCandidateStatus @default(RECOMMENDED)
+
+  matchScore  Float?
+  matchReason String?
+
+  rank Int?
+
+  notifiedAt    DateTime?
+  interestedAt  DateTime?
+  shortlistedAt DateTime?
+  assignedAt    DateTime?
+  rejectedAt    DateTime?
+  expiredAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requirement   Requirement   @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  workerProfile WorkerProfile @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([requirementId, workerProfileId])
+  @@index([requirementId, status])
+  @@index([workerProfileId, status])
+  @@index([requirementId, rank])
+}

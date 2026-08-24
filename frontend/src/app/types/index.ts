@@ -31,6 +31,20 @@ export type EducationLevel =
   | 'POST_GRADUATE';
 
   export type WorkerDirectorySort = "sequence" | "name";
+  export type EmploymentType =
+  | 'PERMANENT'
+  | 'CONTRACT'
+  | 'FREELANCE'
+  | 'PROJECT_BASED'
+  | 'PART_TIME'
+  | 'FULL_TIME'
+  | 'TEMPORARY'
+  | 'ON_CALL'
+  | 'INTERNSHIP';
+
+export type WorkMode = 'ON_SITE' | 'REMOTE';
+
+export type WorkGeography = 'DOMESTIC' | 'INTERNATIONAL';
 
 // ── Skill taxonomy types ──────────────────────────────────────────────────────
 
@@ -104,6 +118,10 @@ export interface WorkerProfile {
   availableTimings?: string;
   preferredWorkingRadius?: number;
   canRelocate?: boolean;
+  employmentTypes: EmploymentType[];
+workMode?: WorkMode;
+workGeography?: WorkGeography;
+preferredCountries?: string[];
 
   // Family & Emergency
   fatherName?: string;

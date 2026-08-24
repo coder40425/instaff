@@ -14,6 +14,7 @@ import {
 import { Badge } from '../../components/ui/badge';
 import { bookingService } from '../../services/api';
 import type { BookingType, WorkerProfile } from '../../types';
+import { ClipboardList, MapPin, Calendar, Timer, IndianRupee, FileText, User } from 'lucide-react';
 
 interface BookingForm {
   bookingType: BookingType;
@@ -56,6 +57,7 @@ export default function CreateBookingPage() {
 
     try {
       setLoading(true);
+      // NOTE: backend contract is unchanged — same fields, same shape.
       await bookingService.create({
         workerId:        worker.userId,
         bookingType,
@@ -67,10 +69,10 @@ export default function CreateBookingPage() {
         servicePrice:    Number(data.servicePrice),
         notes:           data.notes,
       });
-      toast.success('Booking created successfully!');
+      toast.success('Requirement submitted successfully!');
       navigate('/customer/bookings');
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to create booking');
+      toast.error(error.response?.data?.message || 'Failed to submit requirement');
     } finally {
       setLoading(false);
     }
@@ -78,22 +80,33 @@ export default function CreateBookingPage() {
 
   return (
     <CustomerLayout>
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Create Booking</h1>
-          <p className="text-neutral-600 dark:text-neutral-400 mt-1">Fill in the details to book a service</p>
+      <div className="max-w-2xl mx-auto space-y-6 px-1 sm:px-0">
+        {/* Header */}
+        <div className="flex items-start gap-3">
+          <div className="hidden sm:flex w-11 h-11 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 items-center justify-center flex-shrink-0">
+            <ClipboardList className="w-5 h-5 text-neutral-700 dark:text-neutral-300" />
+          </div>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Create Service Requirement</h1>
+            <p className="text-neutral-600 dark:text-neutral-400 mt-1 text-sm sm:text-base">
+              Tell us what you need, and we'll get it arranged with your selected worker.
+            </p>
+          </div>
         </div>
 
         {/* Selected worker summary */}
-        {worker && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Selected Worker</CardTitle>
+        {worker ? (
+          <Card className="border-neutral-200 dark:border-neutral-800">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5" />
+                Requirement For
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex justify-between items-start">
-                <div className="space-y-1">
-                  <p className="font-semibold">{worker.user?.name}</p>
+              <div className="flex justify-between items-start gap-4">
+                <div className="space-y-1.5 min-w-0">
+                  <p className="font-semibold text-lg truncate">{worker.user?.name}</p>
                   <div className="flex flex-wrap gap-1">
                     {workerSkills.map((s) => (
                       <Badge key={s.subCategoryId} variant="secondary" className="text-xs">
@@ -102,27 +115,33 @@ export default function CreateBookingPage() {
                     ))}
                   </div>
                 </div>
-                <p className="font-bold text-lg">₹{worker.expectedSalary}/month</p>
+                <p className="font-bold text-lg whitespace-nowrap">₹{worker.expectedSalary}<span className="text-xs font-normal text-neutral-500">/mo</span></p>
               </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-dashed border-neutral-300 dark:border-neutral-700">
+            <CardContent className="py-6 text-center text-sm text-neutral-500">
+              No worker selected. Please go back and choose a worker first.
             </CardContent>
           </Card>
         )}
 
         <Card>
           <CardHeader>
-            <CardTitle>Booking Details</CardTitle>
+            <CardTitle className="text-lg">Requirement Details</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
 
               {/* Booking type */}
               <div className="space-y-2">
-                <Label>Booking Type</Label>
+                <Label>Requirement Type</Label>
                 <Select value={bookingType} onValueChange={(v) => setBookingType(v as BookingType)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="INSTANT">Instant Booking</SelectItem>
-                    <SelectItem value="SCHEDULED">Scheduled Booking</SelectItem>
+                    <SelectItem value="INSTANT">Instant — worker needed right away</SelectItem>
+                    <SelectItem value="SCHEDULED">Scheduled — for a future date</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -130,7 +149,7 @@ export default function CreateBookingPage() {
               {/* Service selection — worker's skills only */}
               <div className="space-y-2">
                 <Label htmlFor="subCategoryId">
-                  Select Service <span className="text-red-500">*</span>
+                  Type of Work <span className="text-red-500">*</span>
                 </Label>
                 {workerSkills.length === 0 ? (
                   <p className="text-sm text-neutral-500">This worker has no skills listed.</p>
@@ -142,7 +161,7 @@ export default function CreateBookingPage() {
                     render={({ field }) => (
                       <Select onValueChange={field.onChange} value={field.value ?? ''}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Choose a service…" />
+                          <SelectValue placeholder="Choose the work needed…" />
                         </SelectTrigger>
                         <SelectContent>
                           {workerSkills.map((skill) => (
@@ -165,12 +184,44 @@ export default function CreateBookingPage() {
                 )}
               </div>
 
+              {/* Location group */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="city" className="flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-neutral-500" /> City <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="city"
+                    placeholder="Enter city"
+                    {...register('city', {
+                      required: 'City is required',
+                      minLength: { value: 2, message: 'City must be at least 2 characters' },
+                    })}
+                  />
+                  {errors.city && <p className="text-sm text-red-500">{errors.city.message}</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="scheduledDate" className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-neutral-500" />
+                    {bookingType === 'SCHEDULED' ? 'Scheduled Date & Time' : 'Date & Time'}
+                    <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="scheduledDate"
+                    type="datetime-local"
+                    {...register('scheduledDate', { required: 'Date and time is required' })}
+                  />
+                  {errors.scheduledDate && <p className="text-sm text-red-500">{errors.scheduledDate.message}</p>}
+                </div>
+              </div>
+
               {/* Address */}
               <div className="space-y-2">
-                <Label htmlFor="address">Address <span className="text-red-500">*</span></Label>
+                <Label htmlFor="address">Service Address <span className="text-red-500">*</span></Label>
                 <Textarea
                   id="address"
-                  placeholder="Enter service address (min 5 characters)"
+                  placeholder="Enter the full service address (min 5 characters)"
                   {...register('address', {
                     required: 'Address is required',
                     minLength: { value: 5, message: 'Address must be at least 5 characters' },
@@ -179,80 +230,59 @@ export default function CreateBookingPage() {
                 {errors.address && <p className="text-sm text-red-500">{errors.address.message}</p>}
               </div>
 
-              {/* City */}
-              <div className="space-y-2">
-                <Label htmlFor="city">City <span className="text-red-500">*</span></Label>
-                <Input
-                  id="city"
-                  placeholder="Enter city"
-                  {...register('city', {
-                    required: 'City is required',
-                    minLength: { value: 2, message: 'City must be at least 2 characters' },
-                  })}
-                />
-                {errors.city && <p className="text-sm text-red-500">{errors.city.message}</p>}
-              </div>
+              {/* Duration + Price group */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="durationMinutes" className="flex items-center gap-1.5">
+                    <Timer className="w-3.5 h-3.5 text-neutral-500" /> Duration (minutes) <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="durationMinutes"
+                    type="number"
+                    placeholder="e.g. 120 (min 60)"
+                    {...register('durationMinutes', {
+                      required: 'Duration is required',
+                      min: { value: 60, message: 'Minimum duration is 60 minutes' },
+                    })}
+                  />
+                  {errors.durationMinutes && <p className="text-sm text-red-500">{errors.durationMinutes.message}</p>}
+                </div>
 
-              {/* Date & Time */}
-              <div className="space-y-2">
-                <Label htmlFor="scheduledDate">
-                  {bookingType === 'SCHEDULED' ? 'Scheduled Date & Time' : 'Date & Time'}
-                  <span className="text-red-500"> *</span>
-                </Label>
-                <Input
-                  id="scheduledDate"
-                  type="datetime-local"
-                  {...register('scheduledDate', { required: 'Date and time is required' })}
-                />
-                {errors.scheduledDate && <p className="text-sm text-red-500">{errors.scheduledDate.message}</p>}
-              </div>
-
-              {/* Duration */}
-              <div className="space-y-2">
-                <Label htmlFor="durationMinutes">Duration (minutes, minimum 60) <span className="text-red-500">*</span></Label>
-                <Input
-                  id="durationMinutes"
-                  type="number"
-                  placeholder="e.g. 120"
-                  {...register('durationMinutes', {
-                    required: 'Duration is required',
-                    min: { value: 60, message: 'Minimum duration is 60 minutes' },
-                  })}
-                />
-                {errors.durationMinutes && <p className="text-sm text-red-500">{errors.durationMinutes.message}</p>}
-              </div>
-
-              {/* Price */}
-              <div className="space-y-2">
-                <Label htmlFor="servicePrice">Service Price (₹) <span className="text-red-500">*</span></Label>
-                <Input
-                  id="servicePrice"
-                  type="number"
-                  placeholder="e.g. 500"
-                  {...register('servicePrice', {
-                    required: 'Price is required',
-                    min: { value: 1, message: 'Price must be positive' },
-                  })}
-                />
-                {errors.servicePrice && <p className="text-sm text-red-500">{errors.servicePrice.message}</p>}
+                <div className="space-y-2">
+                  <Label htmlFor="servicePrice" className="flex items-center gap-1.5">
+                    <IndianRupee className="w-3.5 h-3.5 text-neutral-500" /> Budget / Price (₹) <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="servicePrice"
+                    type="number"
+                    placeholder="e.g. 500"
+                    {...register('servicePrice', {
+                      required: 'Price is required',
+                      min: { value: 1, message: 'Price must be positive' },
+                    })}
+                  />
+                  {errors.servicePrice && <p className="text-sm text-red-500">{errors.servicePrice.message}</p>}
+                </div>
               </div>
 
               {/* Notes */}
               <div className="space-y-2">
-                <Label htmlFor="notes">Additional Notes (Optional)</Label>
+                <Label htmlFor="notes" className="flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-neutral-500" /> Additional Requirements (Optional)
+                </Label>
                 <Textarea
                   id="notes"
-                  placeholder="Any special instructions…"
+                  placeholder="Any special instructions for the worker…"
                   {...register('notes')}
                 />
               </div>
 
-              <div className="flex gap-4 pt-4">
+              <div className="flex flex-col-reverse sm:flex-row gap-3 pt-4">
                 <Button type="button" variant="outline" className="flex-1" onClick={() => navigate(-1)}>
                   Cancel
                 </Button>
-                <Button type="submit" className="flex-1" disabled={loading || workerSkills.length === 0}>
-                  {loading ? 'Creating…' : 'Create Booking'}
+                <Button type="submit" className="flex-1" disabled={loading || !worker || workerSkills.length === 0}>
+                  {loading ? 'Submitting…' : 'Create Requirement'}
                 </Button>
               </div>
             </form>

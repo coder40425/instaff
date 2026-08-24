@@ -24,6 +24,30 @@ const LANGUAGE_OPTIONS = [
   'Odia', 'Urdu', 'Assamese',
 ];
 
+const EMPLOYMENT_TYPES = [
+  { value: 'PERMANENT', label: 'Permanent' },
+  { value: 'CONTRACT', label: 'Contract' },
+  { value: 'FREELANCE', label: 'Freelance' },
+  { value: 'PROJECT_BASED', label: 'Project Based' },
+  { value: 'PART_TIME', label: 'Part-Time' },
+  { value: 'FULL_TIME', label: 'Full-Time' },
+  { value: 'TEMPORARY', label: 'Temporary' },
+  { value: 'ON_CALL', label: 'On-Call' },
+  { value: 'INTERNSHIP', label: 'Internship' },
+];
+
+const COUNTRY_OPTIONS = [
+  'United States',
+  'United Kingdom',
+  'Canada',
+  'Australia',
+  'Germany',
+  'United Arab Emirates',
+  'Singapore',
+  'Japan',
+  'Other',
+];
+
 interface WorkerProfileForm {
   aadhaarNumber?: string;
   profilePhotoUrl?: string;
@@ -49,6 +73,10 @@ interface WorkerProfileForm {
   emergencyContactNumber?: string;
   city?: string;
   state?: string;
+  employmentTypes?: string[];
+workMode?: string;
+workGeography?: string;
+preferredCountries?: string[];
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -69,7 +97,15 @@ export default function WorkerProfile() {
   const [categoryFilter, setCategoryFilter] = useState('');
 
   const { register, handleSubmit, control, reset, watch, setValue } =
-    useForm<WorkerProfileForm>({ defaultValues: { languagesKnown: [], skillIds: [], canRelocate: false } });
+    useForm<WorkerProfileForm>({
+  defaultValues: {
+    languagesKnown: [],
+    skillIds: [],
+    employmentTypes: [],
+    preferredCountries: [],
+    canRelocate: false,
+  }
+});
 
   const { data: existingProfile, isLoading: profileLoading } = useQuery({
     queryKey: ['worker-profile'],
@@ -102,6 +138,10 @@ export default function WorkerProfile() {
         skillIds:               existingSkillIds,
         experience:             existingProfile.experience ?? undefined,
         expectedSalary:         existingProfile.expectedSalary ?? undefined,
+        employmentTypes: existingProfile.employmentTypes ?? [],
+workMode: existingProfile.workMode ?? undefined,
+workGeography: existingProfile.workGeography ?? undefined,
+preferredCountries: existingProfile.preferredCountries ?? [],
         aboutYourself:          existingProfile.aboutYourself ?? '',
         previousCompanies:      existingProfile.previousCompanies ?? '',
         certifications:         existingProfile.certifications ?? '',
@@ -114,6 +154,7 @@ export default function WorkerProfile() {
         emergencyContactNumber: existingProfile.emergencyContactNumber ?? '',
         city:                   existingProfile.city ?? '',
         state:                  existingProfile.state ?? '',
+        
       });
 
       // Auto-expand the first category that already has selected skills, so
@@ -130,6 +171,9 @@ export default function WorkerProfile() {
 
   const selectedLanguages = watch('languagesKnown') ?? [];
   const selectedSkillIds  = watch('skillIds') ?? [];
+  const selectedEmploymentTypes = watch('employmentTypes') ?? [];
+const selectedCountries = watch('preferredCountries') ?? [];
+const selectedWorkGeography = watch('workGeography');
 
   const toggleLanguage = (lang: string) => {
     const updated = selectedLanguages.includes(lang)
@@ -176,6 +220,10 @@ export default function WorkerProfile() {
         emergencyContact:       data.emergencyContact || undefined,
         emergencyContactNumber: data.emergencyContactNumber || undefined,
         dateOfBirth:            data.dateOfBirth || undefined,
+        employmentTypes:        data.employmentTypes ?? [],
+workMode:               data.workMode || undefined,
+workGeography:          data.workGeography || undefined,
+preferredCountries:     data.preferredCountries ?? [],
       };
       await profileService.updateWorker(payload);
       toast.success('Profile updated successfully!');
@@ -453,6 +501,148 @@ export default function WorkerProfile() {
                   <Label htmlFor="expectedSalary">Expected Salary (₹/month) <span className="text-red-500">*</span></Label>
                   <Input id="expectedSalary" type="number" placeholder="e.g. 15000" {...register('expectedSalary', { valueAsNumber: true })} />
                 </div>
+                <div className="space-y-3 sm:col-span-2">
+  <Label>Employment Preference</Label>
+
+  <p className="text-sm text-neutral-500 dark:text-neutral-400">
+    Select all employment types you are open to.
+  </p>
+
+  <div className="flex flex-wrap gap-2">
+    {EMPLOYMENT_TYPES.map((type) => {
+      const selected = selectedEmploymentTypes.includes(type.value);
+
+      return (
+        <button
+          key={type.value}
+          type="button"
+          onClick={() => {
+            const updated = selected
+              ? selectedEmploymentTypes.filter((item) => item !== type.value)
+              : [...selectedEmploymentTypes, type.value];
+
+            setValue('employmentTypes', updated);
+          }}
+          className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+            selected
+              ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white'
+              : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-300 dark:border-neutral-600 hover:border-neutral-500'
+          }`}
+        >
+          {type.label}
+        </button>
+      );
+    })}
+  </div>
+
+  {selectedEmploymentTypes.length === 0 && (
+    <p className="text-xs text-neutral-400">
+      Not specified
+    </p>
+  )}
+</div>
+
+<div className="space-y-2">
+  <Label>Work Mode</Label>
+
+  <Controller
+    name="workMode"
+    control={control}
+    render={({ field }) => (
+      <Select
+        value={field.value ?? ''}
+        onValueChange={(value) => field.onChange(value)}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Not specified" />
+        </SelectTrigger>
+
+        <SelectContent>
+          <SelectItem value="ON_SITE">On-site</SelectItem>
+          <SelectItem value="REMOTE">Remote</SelectItem>
+        </SelectContent>
+      </Select>
+    )}
+  />
+</div>
+
+<div className="space-y-2">
+  <Label>Work Geography</Label>
+
+  <Controller
+    name="workGeography"
+    control={control}
+    render={({ field }) => (
+      <Select
+        value={field.value ?? ''}
+        onValueChange={(value) => {
+          field.onChange(value);
+
+          if (value === 'DOMESTIC') {
+            setValue('preferredCountries', []);
+          }
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Not specified" />
+        </SelectTrigger>
+
+        <SelectContent>
+          <SelectItem value="DOMESTIC">
+            National & Domestic
+          </SelectItem>
+
+          <SelectItem value="INTERNATIONAL">
+            International
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    )}
+  />
+</div>
+{selectedWorkGeography === 'INTERNATIONAL' && (
+  <div className="space-y-3 sm:col-span-2">
+    <Label>Preferred International Countries</Label>
+
+    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+      Select all countries where you are willing to work.
+    </p>
+
+    <div className="flex flex-wrap gap-2">
+      {COUNTRY_OPTIONS.map((country) => {
+        const selected = selectedCountries.includes(country);
+
+        return (
+          <button
+            key={country}
+            type="button"
+            onClick={() => {
+              const updated = selected
+                ? selectedCountries.filter((item) => item !== country)
+                : [...selectedCountries, country];
+
+              setValue('preferredCountries', updated);
+            }}
+            className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+              selected
+                ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white'
+                : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-300 dark:border-neutral-600 hover:border-neutral-500'
+            }`}
+          >
+            {country}
+          </button>
+        );
+      })}
+    </div>
+
+    {selectedCountries.length === 0 && (
+      <p className="text-xs text-neutral-400">
+        No countries selected
+      </p>
+    )}
+  </div>
+)}
+
                 <div className="space-y-2">
                   <Label htmlFor="availableTimings">Available Timings</Label>
                   <Input id="availableTimings" placeholder="e.g. 9am – 6pm, Mon–Sat" {...register('availableTimings')} />

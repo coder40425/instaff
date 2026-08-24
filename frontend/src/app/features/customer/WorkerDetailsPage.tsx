@@ -11,17 +11,16 @@ import {
   Phone,
   CheckCircle,
   User,
-  Briefcase,
   Clock,
   Globe,
   GraduationCap,
   Heart,
-  PhoneCall,
   Ruler,
   Weight,
   Building2,
   Award,
   Navigation,
+  ClipboardList,
 } from 'lucide-react';
 
 // ── Small helper components ───────────────────────────────────────────────────
@@ -102,7 +101,7 @@ export default function WorkerDetailsPage() {
   if (isLoading) {
     return (
       <CustomerLayout>
-        <div className="text-center py-12">Loading worker details…</div>
+        <div className="text-center py-12 text-neutral-500">Loading worker details…</div>
       </CustomerLayout>
     );
   }
@@ -120,17 +119,17 @@ export default function WorkerDetailsPage() {
 
   return (
     <CustomerLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
-        <Button variant="ghost" onClick={() => navigate(-1)}>
+      <div className="max-w-4xl mx-auto space-y-6 px-1 sm:px-0">
+        <Button variant="ghost" onClick={() => navigate(-1)} className="-ml-2">
           ← Back
         </Button>
 
         {/* ── Hero card ──────────────────────────────────────────────────────── */}
         <Card>
-          <CardContent className="p-8">
+          <CardContent className="p-5 sm:p-8">
             <div className="flex flex-col sm:flex-row gap-6">
               {/* Avatar */}
-              <div className="flex-shrink-0">
+              <div className="flex-shrink-0 flex sm:block justify-center">
                 {worker.profilePhotoUrl ? (
                   <img
                     src={worker.profilePhotoUrl}
@@ -145,15 +144,15 @@ export default function WorkerDetailsPage() {
               </div>
 
               {/* Core info */}
-              <div className="flex-1 space-y-4">
+              <div className="flex-1 space-y-4 text-center sm:text-left">
                 <div>
-                  <h1 className="text-3xl font-bold">{workerName}</h1>
-                  <p className="text-xl text-neutral-600 dark:text-neutral-400 mt-1">
+                  <h1 className="text-2xl sm:text-3xl font-bold">{workerName}</h1>
+                  <p className="text-lg sm:text-xl text-neutral-600 dark:text-neutral-400 mt-1">
                     {worker.skillCategory}
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
                   {worker.isVerified && (
                     <Badge className="bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300">
                       <CheckCircle className="w-3 h-3 mr-1" />
@@ -171,7 +170,7 @@ export default function WorkerDetailsPage() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2 text-left">
                   <div>
                     <p className="text-xs text-neutral-500">Rating</p>
                     <div className="flex items-center gap-1 mt-0.5">
@@ -203,10 +202,11 @@ export default function WorkerDetailsPage() {
 
                 <Button
                   size="lg"
-                  className="w-full sm:w-auto mt-4"
+                  className="w-full sm:w-auto mt-4 gap-2"
                   onClick={() => navigate('/booking/create', { state: { worker } })}
                 >
-                  Book Now
+                  <ClipboardList className="w-4 h-4" />
+                  Create Requirement
                 </Button>
               </div>
             </div>

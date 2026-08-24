@@ -29,6 +29,10 @@ function mapProfileData(data: any) {
     ...(data.latitude               !== undefined && { latitude:               data.latitude }),
     ...(data.longitude              !== undefined && { longitude:              data.longitude }),
     ...(data.aadhaarNumber          !== undefined && { aadhaarNumber:          data.aadhaarNumber }),
+        ...(data.employmentTypes        !== undefined && { employmentTypes:        data.employmentTypes }),
+    ...(data.workMode               !== undefined && { workMode:               data.workMode }),
+    ...(data.workGeography          !== undefined && { workGeography:          data.workGeography }),
+    ...(data.preferredCountries     !== undefined && { preferredCountries:     data.preferredCountries }),
   };
 }
 

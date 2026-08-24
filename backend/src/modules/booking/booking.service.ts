@@ -223,17 +223,53 @@ export const markBookingPaid = async (bookingId: string, customerId: string, pay
   });
 };
 
-export const requestReplacement = async (bookingId: string, customerId: string, reason: string) => {
-  const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
-  if (!booking)                          throw new Error("Booking not found");
-  if (booking.customerId !== customerId)  throw new Error("Unauthorized");
-  if (booking.status !== "NO_SHOW" && booking.status !== "ACCEPTED") {
-    throw new Error("Replacement not allowed");
+export const requestReplacement = async (
+  bookingId: string,
+  customerId: string,
+  reason: string
+) => {
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+  });
+
+  if (!booking) {
+    throw new Error("Booking not found");
+  }
+
+  if (booking.customerId !== customerId) {
+    throw new Error("Unauthorized");
+  }
+
+  if (
+    booking.status !== "NO_SHOW" &&
+    booking.status !== "ACCEPTED"
+  ) {
+    throw new Error("Replacement not allowed for this booking");
+  }
+
+  if (booking.replacementRequested) {
+    throw new Error("Replacement already requested");
+  }
+
+  if (!reason || reason.trim().length < 3) {
+    throw new Error("Replacement reason is required");
   }
 
   return prisma.booking.update({
     where: { id: bookingId },
-    data:  { replacementRequested: true, replacementReason: reason },
+
+    data: {
+      replacementRequested: true,
+      replacementReason: reason.trim(),
+    },
+
+    include: {
+      subCategory: {
+        include: {
+          category: true,
+        },
+      },
+    },
   });
 };
 

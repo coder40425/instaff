@@ -193,6 +193,12 @@ export type UpdateWorkerProfilePayload = {
   maritalStatus?: string;
   experience?: number;
   expectedSalary?: number;
+
+  employmentTypes?: string[];
+  workMode?: string;
+  workGeography?: string;
+  preferredCountries?: string[];
+
   aboutYourself?: string;
   previousCompanies?: string;
   certifications?: string;

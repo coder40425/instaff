@@ -64,17 +64,110 @@ export const forceCancelBooking = async (bookingId: string) => {
   return prisma.booking.update({ where: { id: bookingId }, data: { status: "CANCELLED", cancelledAt: new Date() } });
 };
 
-export const reassignBooking = async (bookingId: string, newWorkerId: string) => {
-  const worker = await prisma.workerProfile.findUnique({ where: { userId: newWorkerId }, include: { user: true } });
-  if (!worker)            throw new Error("Worker not found");
-  if (!worker.isVerified)  throw new Error("Worker not verified");
-  if (worker.isSuspended)  throw new Error("Worker suspended");
-  if (!worker.isAvailable) throw new Error("Worker unavailable");
-
-  return prisma.booking.update({
+export const reassignBooking = async (
+  bookingId: string,
+  newWorkerId: string
+) => {
+  const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
-    data: { workerId: newWorkerId, workerName: worker.user.name, workerPhone: worker.user.phone, status: "PENDING", acceptedAt: null },
   });
+
+  if (!booking) {
+    throw new Error("Booking not found");
+  }
+
+  if (
+    booking.status === "COMPLETED" ||
+    booking.status === "CANCELLED"
+  ) {
+    throw new Error("Cannot assign a worker to a closed booking");
+  }
+
+  const worker = await prisma.workerProfile.findUnique({
+    where: { userId: newWorkerId },
+    include: {
+      user: true,
+      skills: {
+        include: {
+          subCategory: true,
+        },
+      },
+    },
+  });
+
+  if (!worker) {
+    throw new Error("Worker not found");
+  }
+
+  if (!worker.isVerified) {
+    throw new Error("Worker not verified");
+  }
+
+  if (worker.isSuspended) {
+    throw new Error("Worker suspended");
+  }
+
+  if (!worker.isAvailable) {
+    throw new Error("Worker unavailable");
+  }
+
+  // Worker must actually provide the required work type
+  const hasRequiredSkill = worker.skills.some(
+    (skill) => skill.subCategoryId === booking.subCategoryId
+  );
+
+  if (!hasRequiredSkill) {
+    throw new Error(
+      "Worker does not offer the required service"
+    );
+  }
+
+  // Don't assign the same worker again
+  if (booking.workerId === newWorkerId) {
+    throw new Error("This worker is already assigned");
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    // If the old worker was assigned, make them available again
+    await tx.workerProfile.updateMany({
+      where: {
+        userId: booking.workerId,
+      },
+      data: {
+        isAvailable: true,
+      },
+    });
+
+    // Update booking
+    const updatedBooking = await tx.booking.update({
+      where: { id: bookingId },
+      data: {
+        workerId: newWorkerId,
+        workerName: worker.user.name,
+        workerPhone: worker.user.phone,
+
+        // New worker must accept the assignment
+        status: "PENDING",
+        acceptedAt: null,
+
+        // Record replacement information
+        replacementWorkerId: newWorkerId,
+        replacementAssignedAt: new Date(),
+      },
+
+      include: {
+        subCategory: {
+          include: {
+            category: true,
+          },
+        },
+      },
+    });
+
+    return updatedBooking;
+  });
+
+  return result;
 };
 
 export const getReplacementCandidates = async (bookingId: string) => {
