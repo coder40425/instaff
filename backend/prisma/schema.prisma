@@ -136,6 +136,28 @@ model WorkerProfile {
   skills                 WorkerSkill[]
   wallet                 WorkerWallet?
   requirementCandidates  RequirementCandidate[]
+  locations              WorkerLocation[]
+  preferredRequirements  Requirement[]          @relation("PreferredRequirementWorker")
+}
+
+model WorkerLocation {
+  id              String        @id @default(cuid())
+  workerProfileId String
+
+  city            String
+  state           String?
+  latitude        Float?
+  longitude       Float?
+  isPrimary       Boolean       @default(false)
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  workerProfile   WorkerProfile @relation(fields: [workerProfileId],references: [id],onDelete: Cascade)
+
+  @@index([workerProfileId])
+  @@index([city])
+  @@index([state])
 }
 
 model EmployerProfile {
@@ -397,14 +419,16 @@ model Requirement {
   minExperience Int     @default(0)
 
   joiningDate         DateTime
-  requiredWorkerCount Int              @default(1)
-  employmentTypes     EmploymentType[]
-  workMode            WorkMode?
-  workGeography       WorkGeography?
-  preferredCountries  String[]
+  requiredWorkerCount Int      @default(1)
 
-  assignmentMode AssignmentMode @default(SINGLE_WITH_BACKUP)
-  backupPoolSize Int            @default(10)
+  employmentTypes    EmploymentType[]
+  workMode           WorkMode?
+  workGeography      WorkGeography?
+  preferredCountries String[]
+
+  assignmentMode           AssignmentMode @default(SINGLE_WITH_BACKUP)
+  backupPoolSize           Int            @default(10)
+  preferredWorkerProfileId String?
 
   status RequirementStatus @default(DRAFT)
 
@@ -417,6 +441,8 @@ model Requirement {
   createdBy   User        @relation("CreatedRequirements", fields: [createdById], references: [id])
   category    Category    @relation(fields: [categoryId], references: [id])
   subCategory SubCategory @relation(fields: [subCategoryId], references: [id])
+
+  preferredWorkerProfile WorkerProfile? @relation("PreferredRequirementWorker", fields: [preferredWorkerProfileId], references: [id])
 
   candidates RequirementCandidate[]
 

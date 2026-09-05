@@ -12,6 +12,8 @@ import CustomerDashboard from './features/customer/CustomerDashboard';
 import CustomerHome from './features/customer/CustomerHome';
 import WorkerDetailsPage from './features/customer/WorkerDetailsPage';
 import CreateBookingPage from './features/customer/CreateBookingPage';
+import CreateRequirementPage from './features/customer/CreateRequirementPage';
+import RequirementDetailsPage from './features/customer/RequirementDetailsPage';
 import MyBookingsPage from './features/customer/MyBookingsPage';
 import CustomerProfile from './features/customer/CustomerProfile';
 import ComplaintsPage from './features/customer/ComplaintsPage';
@@ -82,6 +84,8 @@ function AppRoutes() {
       <Route path="/customer/home" element={<ProtectedRoute allowedRoles={['CUSTOMER']}><CustomerHome /></ProtectedRoute>} />
       <Route path="/workers/:id" element={<ProtectedRoute allowedRoles={['CUSTOMER']}><WorkerDetailsPage /></ProtectedRoute>} />
       <Route path="/booking/create" element={<ProtectedRoute allowedRoles={['CUSTOMER']}><CreateBookingPage /></ProtectedRoute>} />
+      <Route path="/customer/requirements/new" element={<ProtectedRoute allowedRoles={['CUSTOMER']}><CreateRequirementPage /></ProtectedRoute>} />
+      <Route path="/customer/requirements/:id" element={<ProtectedRoute allowedRoles={['CUSTOMER']}><RequirementDetailsPage /></ProtectedRoute>} />
       <Route path="/customer/bookings" element={<ProtectedRoute allowedRoles={['CUSTOMER']}><MyBookingsPage /></ProtectedRoute>} />
       <Route path="/customer/profile" element={<ProtectedRoute allowedRoles={['CUSTOMER']}><CustomerProfile /></ProtectedRoute>} />
       <Route path="/customer/complaints" element={<ProtectedRoute allowedRoles={['CUSTOMER']}><ComplaintsPage /></ProtectedRoute>} />
@@ -100,9 +104,8 @@ function AppRoutes() {
       <Route path="/admin/workers" element={<ProtectedRoute allowedRoles={['ADMIN']}><WorkerManagement /></ProtectedRoute>} />
       <Route path="/admin/bookings" element={<ProtectedRoute allowedRoles={['ADMIN']}><BookingManagement /></ProtectedRoute>} />
       <Route path="/admin/complaints" element={<ProtectedRoute allowedRoles={['ADMIN']}><ComplaintManagement /></ProtectedRoute>} />
-      <Route path="/admin/complaints" element={<ProtectedRoute allowedRoles={['ADMIN']}><ComplaintManagement /></ProtectedRoute>} />
-<Route path="/admin/wallets" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminWallets /></ProtectedRoute>} />
-<Route path="/admin/payment-settings" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminPaymentSettings /></ProtectedRoute>} />
+      <Route path="/admin/wallets" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminWallets /></ProtectedRoute>} />
+      <Route path="/admin/payment-settings" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminPaymentSettings /></ProtectedRoute>} />
 
       <Route path="/employer" element={<EmployerPortal />} />
       <Route path="*" element={<Navigate to="/" replace />} />

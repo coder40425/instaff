@@ -5,9 +5,9 @@ const workerInclude = {
     select: {
       id: true,
       name: true,
-      phone: true,
     },
   },
+
   skills: {
     include: {
       subCategory: {
@@ -26,7 +26,6 @@ export const getWorkers = async (filters: {
   search?: string;
   city?: string;
   isAvailable?: boolean;
-  isVerified?: boolean;
   sort?: "sequence" | "name";
 }) => {
   const {
@@ -36,7 +35,6 @@ export const getWorkers = async (filters: {
     search,
     city,
     isAvailable,
-    isVerified,
     sort = "sequence",
   } = filters;
 
@@ -64,7 +62,7 @@ export const getWorkers = async (filters: {
     });
   }
 
-  if (subCategoryIds && subCategoryIds.length > 0) {
+  if (subCategoryIds?.length) {
     skillConditions.push({
       skills: {
         some: {
@@ -77,6 +75,10 @@ export const getWorkers = async (filters: {
   }
 
   const where: any = {
+    // PUBLIC DISCOVERY RULES — NEVER OVERRIDE THESE
+    isVerified: true,
+    isSuspended: false,
+
     ...(skillConditions.length > 0 && {
       AND: skillConditions,
     }),
@@ -91,10 +93,6 @@ export const getWorkers = async (filters: {
     ...(isAvailable !== undefined && {
       isAvailable,
     }),
-
-    ...(isVerified !== undefined && {
-      isVerified,
-    }),
   };
 
   if (search?.trim()) {
@@ -106,13 +104,6 @@ export const getWorkers = async (filters: {
           name: {
             contains: keyword,
             mode: "insensitive",
-          },
-        },
-      },
-      {
-        user: {
-          phone: {
-            contains: keyword,
           },
         },
       },
@@ -191,13 +182,16 @@ export const getWorkers = async (filters: {
   return workers;
 };
 
-export const getWorkerById = async (
-  workerId: string
-) => {
-  const worker = await prisma.workerProfile.findUnique({
+export const getWorkerById = async (workerId: string) => {
+  const worker = await prisma.workerProfile.findFirst({
     where: {
       id: workerId,
+
+      // PUBLIC DISCOVERY RULES
+      isVerified: true,
+      isSuspended: false,
     },
+
     include: workerInclude,
   });
 

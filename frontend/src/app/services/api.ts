@@ -1,5 +1,16 @@
 import axios from 'axios';
-import type { AuthResponse, LoginRequest, RegisterRequest, WorkerDirectoryFilters } from '../types';
+import type {
+  AuthResponse,
+  CreateRequirementPayload,
+  LoginRequest,
+  RegisterRequest,
+  UpdateRequirementPayload,
+  WorkerDirectoryFilters,
+  Requirement,
+  RequirementCandidate,
+  WorkerProfile,
+  Category,
+} from '../types';
 
 const API_BASE =
   ((import.meta as any).env?.VITE_API_URL as string) ||
@@ -43,7 +54,7 @@ export const authService = {
 };
 
 export const categoryService = {
-  getAll: async (sort: 'sequence' | 'name' = 'sequence') => {
+  getAll: async (sort: 'sequence' | 'name' = 'sequence'): Promise<Category[]> => {
     const response = await api.get('/categories', {
       params: { sort },
     });
@@ -53,30 +64,102 @@ export const categoryService = {
 };
 
 export const workerService = {
-  getAll: async (params?: WorkerDirectoryFilters) => {
-  const response = await api.get('/workers', {
-    params,
-  });
+  // CUSTOMER DISCOVERY — backend ALWAYS filters isVerified=true, isSuspended=false.
+  // The frontend must never rely on its own filtering as the security boundary;
+  // we only defensively drop anything that slips through unexpectedly.
+  getAll: async (params?: WorkerDirectoryFilters): Promise<WorkerProfile[]> => {
+    const response = await api.get('/workers', {
+      params,
+    });
 
-  return response.data.data;
-},
-  getById: async (id: string) => {
-    const response = await api.get(`/workers/${id}`);
+    const workers: WorkerProfile[] = response.data.data ?? [];
+
+    // Defensive filter only — NOT the security mechanism. The backend is the
+    // source of truth. This just guards the UI in case of an unexpected payload.
+    return workers.filter((w) => w.isVerified === true && w.isSuspended !== true);
+  },
+
+  getById: async (id: string): Promise<WorkerProfile | null> => {
+    try {
+      const response = await api.get(`/workers/${id}`);
+      const worker: WorkerProfile | undefined = response.data.data;
+
+      // Defensive check — backend already excludes unverified/suspended workers
+      // from this endpoint, but we never render one to a customer if it slips through.
+      if (!worker || worker.isVerified !== true || worker.isSuspended === true) {
+        return null;
+      }
+      return worker;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  },
+
+  // WORKER
+  updateAvailability: async (isAvailable: boolean) => {
+    const response = await api.patch('/worker/availability', {
+      isAvailable,
+    });
+
     return response.data.data;
   },
-  updateAvailability: async (isAvailable: boolean) => {
-    const response = await api.patch('/worker/availability', { isAvailable });
-    return response.data;
-  },
-  updateLocation: async (data: { latitude: number; longitude: number; city: string; state: string }) => {
+
+  updateLocation: async (data: {
+    latitude: number;
+    longitude: number;
+    city: string;
+    state: string;
+  }) => {
     const response = await api.patch('/worker/location', data);
-    return response.data;
+
+    return response.data.data;
   },
+
   getEarnings: async () => {
     const response = await api.get('/worker/earnings');
     return response.data.data;
   },
+
+  getLocations: async () => {
+    const response = await api.get('/worker/locations');
+    return response.data.data;
+  },
+
+  addLocation: async (data: {
+    city: string;
+    state?: string;
+    latitude?: number;
+    longitude?: number;
+    isPrimary?: boolean;
+  }) => {
+    const response = await api.post(
+      '/worker/locations',
+      data
+    );
+
+    return response.data.data;
+  },
+
+  deleteLocation: async (locationId: string) => {
+    const response = await api.delete(
+      `/worker/locations/${locationId}`
+    );
+
+    return response.data.data;
+  },
+
+  setPrimaryLocation: async (locationId: string) => {
+    const response = await api.patch(
+      `/worker/locations/${locationId}/primary`
+    );
+
+    return response.data.data;
+  },
 };
+
 
 export const bookingService = {
   create: async (data: {
@@ -146,7 +229,9 @@ export const complaintService = {
 
 export const adminService = {
   getAnalytics:      async () => { const r = await api.get('/admin/analytics');       return r.data.data; },
+  // Admin-only: sees pending/rejected workers awaiting verification.
   getPendingWorkers: async () => { const r = await api.get('/admin/workers/pending'); return r.data.data; },
+  // IMPORTANT: these routes take the USER id, not the worker profile id. Do not change.
   approveWorker:     async (userId: string) => { const r = await api.patch(`/admin/workers/${userId}/approve`);     return r.data; },
   rejectWorker:      async (userId: string, reason: string) => { const r = await api.patch(`/admin/workers/${userId}/reject`,  { reason }); return r.data; },
   suspendWorker:     async (userId: string, reason: string) => { const r = await api.patch(`/admin/workers/${userId}/suspend`, { reason }); return r.data; },
@@ -245,6 +330,87 @@ export const profileService = {
 export const walletService = {
   getMyWallet: async () => {
     const response = await api.get('/worker/wallet');
+    return response.data.data;
+  },
+};
+
+
+export const requirementService = {
+  create: async (data: CreateRequirementPayload): Promise<Requirement> => {
+    const response = await api.post('/requirements', data);
+    return response.data.data;
+  },
+
+  getMy: async (): Promise<Requirement[]> => {
+    const response = await api.get('/requirements/my');
+    return response.data.data;
+  },
+
+  getById: async (id: string): Promise<Requirement> => {
+    const response = await api.get(`/requirements/${id}`);
+    return response.data.data;
+  },
+
+  update: async (
+    id: string,
+    data: UpdateRequirementPayload
+  ): Promise<Requirement> => {
+    const response = await api.patch(
+      `/requirements/${id}`,
+      data
+    );
+
+    return response.data.data;
+  },
+
+  open: async (id: string): Promise<Requirement> => {
+    const response = await api.patch(
+      `/requirements/${id}/open`
+    );
+
+    return response.data.data;
+  },
+
+  cancel: async (id: string): Promise<Requirement> => {
+    const response = await api.patch(
+      `/requirements/${id}/cancel`
+    );
+
+    return response.data.data;
+  },
+};
+
+export const matchingService = {
+  // Generate / refresh matching candidates
+  generateMatches: async (requirementId: string): Promise<RequirementCandidate[]> => {
+    const response = await api.post(
+      `/matching/requirements/${requirementId}/match`
+    );
+
+    return response.data.data;
+  },
+
+  // Build PRIMARY / BACKUP assignment pool
+  buildAssignmentPool: async (requirementId: string): Promise<RequirementCandidate[]> => {
+    const response = await api.post(
+      `/matching/requirements/${requirementId}/assignment-pool`
+    );
+
+    return response.data.data;
+  },
+
+  // Assign a candidate worker — takes workerProfileId, NOT userId
+  assignWorker: async (
+    requirementId: string,
+    workerProfileId: string
+  ): Promise<RequirementCandidate> => {
+    const response = await api.post(
+      `/matching/requirements/${requirementId}/assign`,
+      {
+        workerProfileId,
+      }
+    );
+
     return response.data.data;
   },
 };

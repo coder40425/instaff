@@ -42,13 +42,6 @@ export const fetchWorkers = async (
           ? false
           : undefined,
 
-      isVerified:
-        req.query.isVerified === "true"
-          ? true
-          : req.query.isVerified === "false"
-          ? false
-          : undefined,
-
       sort:
         req.query.sort === "name"
           ? "name"

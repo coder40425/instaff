@@ -88,6 +88,25 @@ export interface User {
   updatedAt: string;
 }
 
+export interface WorkerLocation {
+  id: string;
+  workerProfileId: string;
+  city: string;
+  state: string;
+  latitude: number;
+  longitude: number;
+  isPrimary: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateWorkerLocationPayload {
+  city: string;
+  state: string;
+  latitude: number;
+  longitude: number;
+}
+
 export interface WorkerProfile {
   id: string;
   userId: string;
@@ -237,4 +256,107 @@ export interface WorkerDirectoryFilters {
   isAvailable?: boolean;
   isVerified?: boolean;
   sort?: WorkerDirectorySort;
+}
+
+export type AssignmentMode =
+  | 'PREFERRED_SINGLE'
+  | 'SINGLE_WITH_BACKUP'
+  | 'BULK_WORKFORCE';
+
+export type RequirementStatus =
+  | 'DRAFT'
+  | 'OPEN'
+  | 'MATCHING'
+  | 'FILLED'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
+export type RequirementCandidateStatus =
+  | 'RECOMMENDED'
+  | 'SHORTLISTED'
+  | 'PRIMARY'
+  | 'BACKUP'
+  | 'ASSIGNED'
+  | 'REJECTED'
+  | 'EXPIRED';
+
+export interface CreateRequirementPayload {
+  categoryId: string;
+  subCategoryId: string;
+  city: string;
+  state?: string;
+  address?: string;
+  shiftTiming?: string;
+  salaryBudget?: number;
+  minExperience?: number;
+  joiningDate: string;
+  requiredWorkerCount?: number;
+  employmentTypes?: EmploymentType[];
+  workMode?: WorkMode;
+  workGeography?: WorkGeography;
+  preferredCountries?: string[];
+  assignmentMode?: AssignmentMode;
+  backupPoolSize?: number;
+  preferredWorkerProfileId?: string;
+}
+
+export type UpdateRequirementPayload =
+  Partial<CreateRequirementPayload>;
+
+export interface RequirementCandidate {
+  id: string;
+  requirementId: string;
+  workerProfileId: string;
+  status: RequirementCandidateStatus;
+  matchScore: number;
+  matchReason: string;
+  rank: number;
+  assignedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+
+  workerProfile?: WorkerProfile;
+}
+
+export interface Requirement {
+  id: string;
+  createdById: string;
+  categoryId: string;
+  subCategoryId: string;
+  city: string;
+  state?: string | null;
+  address?: string | null;
+  shiftTiming?: string | null;
+  salaryBudget?: number | null;
+  minExperience: number;
+  joiningDate: string;
+  requiredWorkerCount: number;
+  employmentTypes: EmploymentType[];
+  workMode?: WorkMode | null;
+  workGeography?: WorkGeography | null;
+  preferredCountries: string[];
+  assignmentMode: AssignmentMode;
+  backupPoolSize: number;
+  preferredWorkerProfileId?: string | null;
+  status: RequirementStatus;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string | null;
+
+  category?: Category;
+  subCategory?: SubCategory;
+  candidates?: RequirementCandidate[];
+}
+
+// ── API response envelope types ────────────────────────────────────────────────
+
+export interface ApiListResponse<T> {
+  success: true;
+  count: number;
+  data: T[];
+}
+
+export interface ApiItemResponse<T> {
+  success: true;
+  data: T;
 }

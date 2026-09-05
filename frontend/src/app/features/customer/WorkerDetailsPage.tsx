@@ -80,18 +80,20 @@ export default function WorkerDetailsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const { data: workerData, isLoading } = useQuery({
+  // workerService.getById returns null for 404 AND for any unverified/suspended
+  // worker that might unexpectedly slip through — both cases render the same
+  // "not found / unavailable" state to the customer, never the profile itself.
+  const { data: worker, isLoading, isError } = useQuery({
     queryKey: ['worker', id],
     queryFn: () => workerService.getById(id!),
     enabled: !!id,
+    retry: false,
   });
-
-  const worker = workerData?.data || workerData;
 
   const { data: reviewsData } = useQuery({
     queryKey: ['worker-reviews', id],
     queryFn: () => reviewService.getWorkerReviews(id!),
-    enabled: !!id,
+    enabled: !!id && !!worker,
   });
 
   const reviews = Array.isArray(reviewsData)
@@ -106,16 +108,32 @@ export default function WorkerDetailsPage() {
     );
   }
 
-  if (!worker) {
+  if (isError || !worker) {
     return (
       <CustomerLayout>
-        <div className="text-center py-12 text-neutral-500">Worker not found</div>
+        <div className="max-w-2xl mx-auto text-center py-16 space-y-3">
+          <p className="text-neutral-700 dark:text-neutral-300 font-semibold text-lg">
+            Worker not found / unavailable
+          </p>
+          <p className="text-neutral-500 text-sm">
+            This worker profile doesn't exist or is no longer available.
+          </p>
+          <Button variant="outline" onClick={() => navigate('/customer/home')}>
+            Back to Worker Directory
+          </Button>
+        </div>
       </CustomerLayout>
     );
   }
 
-  const workerName = worker.user?.name || worker.name;
-  const workerPhone = worker.user?.phone || worker.phone;
+  const workerName = worker.user?.name;
+  const workerPhone = worker.user?.phone;
+
+  // skills[] presented A-Z, per requirement
+  const sortedSkills = [...(worker.skills ?? [])].sort((a, b) =>
+    (a.subCategory?.name ?? '').localeCompare(b.subCategory?.name ?? '')
+  );
+  const primaryCategoryName = sortedSkills[0]?.subCategory?.category?.name;
 
   return (
     <CustomerLayout>
@@ -147,9 +165,11 @@ export default function WorkerDetailsPage() {
               <div className="flex-1 space-y-4 text-center sm:text-left">
                 <div>
                   <h1 className="text-2xl sm:text-3xl font-bold">{workerName}</h1>
-                  <p className="text-lg sm:text-xl text-neutral-600 dark:text-neutral-400 mt-1">
-                    {worker.skillCategory}
-                  </p>
+                  {primaryCategoryName && (
+                    <p className="text-lg sm:text-xl text-neutral-600 dark:text-neutral-400 mt-1">
+                      {primaryCategoryName}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
@@ -170,6 +190,17 @@ export default function WorkerDetailsPage() {
                   )}
                 </div>
 
+                {/* Skills list — A-Z */}
+                {sortedSkills.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
+                    {sortedSkills.map((s) => (
+                      <Badge key={s.id} variant="secondary" className="text-xs">
+                        {s.subCategory?.name}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2 text-left">
                   <div>
                     <p className="text-xs text-neutral-500">Rating</p>
@@ -183,7 +214,7 @@ export default function WorkerDetailsPage() {
                     <div className="flex items-center gap-1 mt-0.5">
                       <MapPin className="w-4 h-4" />
                       <span className="font-semibold text-sm">
-                        {worker.city}, {worker.state}
+                        {worker.city}{worker.state ? `, ${worker.state}` : ''}
                       </span>
                     </div>
                   </div>
@@ -241,8 +272,8 @@ export default function WorkerDetailsPage() {
             />
             <InfoRow icon={Ruler}        label="Height"         value={worker.height ? `${worker.height} cm` : null} />
             <InfoRow icon={Weight}       label="Weight"         value={worker.weight ? `${worker.weight} kg` : null} />
-            <InfoRow icon={GraduationCap} label="Education"     value={EDUCATION_LABELS[worker.education] ?? worker.education} />
-            <InfoRow icon={Heart}        label="Marital Status" value={MARITAL_LABELS[worker.maritalStatus] ?? worker.maritalStatus} />
+            <InfoRow icon={GraduationCap} label="Education"     value={worker.education ? (EDUCATION_LABELS[worker.education] ?? worker.education) : null} />
+            <InfoRow icon={Heart}        label="Marital Status" value={worker.maritalStatus ? (MARITAL_LABELS[worker.maritalStatus] ?? worker.maritalStatus) : null} />
           </div>
 
           {worker.languagesKnown && worker.languagesKnown.length > 0 && (
@@ -251,7 +282,7 @@ export default function WorkerDetailsPage() {
               label="Languages Known"
               value={
                 <div className="flex flex-wrap gap-1 mt-1">
-                  {worker.languagesKnown.map((lang: string) => (
+                  {[...worker.languagesKnown].sort((a, b) => a.localeCompare(b)).map((lang: string) => (
                     <Badge key={lang} variant="secondary" className="text-xs">
                       {lang}
                     </Badge>

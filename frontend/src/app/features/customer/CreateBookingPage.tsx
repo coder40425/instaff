@@ -14,7 +14,7 @@ import {
 import { Badge } from '../../components/ui/badge';
 import { bookingService } from '../../services/api';
 import type { BookingType, WorkerProfile } from '../../types';
-import { ClipboardList, MapPin, Calendar, Timer, IndianRupee, FileText, User } from 'lucide-react';
+import { CalendarClock, MapPin, Calendar, Timer, IndianRupee, FileText, User, ClipboardList, ArrowRight } from 'lucide-react';
 
 interface BookingForm {
   bookingType: BookingType;
@@ -57,7 +57,9 @@ export default function CreateBookingPage() {
 
     try {
       setLoading(true);
-      // NOTE: backend contract is unchanged — same fields, same shape.
+      // Direct/instant booking — unchanged backend contract, same fields, same shape.
+      // This is intentionally the OLD booking flow, kept separate from the new
+      // Requirement → Matching → Assignment workflow (see CreateRequirementPage).
       await bookingService.create({
         workerId:        worker.userId,
         bookingType,
@@ -69,10 +71,10 @@ export default function CreateBookingPage() {
         servicePrice:    Number(data.servicePrice),
         notes:           data.notes,
       });
-      toast.success('Requirement submitted successfully!');
+      toast.success('Booking request sent to the worker!');
       navigate('/customer/bookings');
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to submit requirement');
+      toast.error(error.response?.data?.message || 'Failed to submit booking');
     } finally {
       setLoading(false);
     }
@@ -84,15 +86,40 @@ export default function CreateBookingPage() {
         {/* Header */}
         <div className="flex items-start gap-3">
           <div className="hidden sm:flex w-11 h-11 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 items-center justify-center flex-shrink-0">
-            <ClipboardList className="w-5 h-5 text-neutral-700 dark:text-neutral-300" />
+            <CalendarClock className="w-5 h-5 text-neutral-700 dark:text-neutral-300" />
           </div>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Create Service Requirement</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Book This Worker</h1>
             <p className="text-neutral-600 dark:text-neutral-400 mt-1 text-sm sm:text-base">
-              Tell us what you need, and we'll get it arranged with your selected worker.
+              Book directly with this worker for a specific job, right away or on a scheduled date.
             </p>
           </div>
         </div>
+
+        {/* Bridge to the new requirement/hiring flow — for anyone who actually
+            wants matching/backups/bulk-hiring instead of a single direct booking. */}
+        <Card className="border-dashed border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/40">
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                Hiring for a role instead of a one-off job?
+              </p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                Post a requirement to get matched candidates, backups, or hire in bulk.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 flex-shrink-0"
+              onClick={() => navigate('/customer/requirements/new', { state: { worker } })}
+            >
+              <ClipboardList className="w-3.5 h-3.5" />
+              Post a Requirement
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Selected worker summary */}
         {worker ? (
@@ -100,7 +127,7 @@ export default function CreateBookingPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5" />
-                Requirement For
+                Booking For
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -108,11 +135,13 @@ export default function CreateBookingPage() {
                 <div className="space-y-1.5 min-w-0">
                   <p className="font-semibold text-lg truncate">{worker.user?.name}</p>
                   <div className="flex flex-wrap gap-1">
-                    {workerSkills.map((s) => (
-                      <Badge key={s.subCategoryId} variant="secondary" className="text-xs">
-                        {s.subCategory?.name}
-                      </Badge>
-                    ))}
+                    {[...workerSkills]
+                      .sort((a, b) => (a.subCategory?.name ?? '').localeCompare(b.subCategory?.name ?? ''))
+                      .map((s) => (
+                        <Badge key={s.subCategoryId} variant="secondary" className="text-xs">
+                          {s.subCategory?.name}
+                        </Badge>
+                      ))}
                   </div>
                 </div>
                 <p className="font-bold text-lg whitespace-nowrap">₹{worker.expectedSalary}<span className="text-xs font-normal text-neutral-500">/mo</span></p>
@@ -129,14 +158,14 @@ export default function CreateBookingPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Requirement Details</CardTitle>
+            <CardTitle className="text-lg">Booking Details</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
 
               {/* Booking type */}
               <div className="space-y-2">
-                <Label>Requirement Type</Label>
+                <Label>Booking Type</Label>
                 <Select value={bookingType} onValueChange={(v) => setBookingType(v as BookingType)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -164,16 +193,18 @@ export default function CreateBookingPage() {
                           <SelectValue placeholder="Choose the work needed…" />
                         </SelectTrigger>
                         <SelectContent>
-                          {workerSkills.map((skill) => (
-                            <SelectItem key={skill.subCategoryId} value={skill.subCategoryId}>
-                              {skill.subCategory?.name}
-                              {skill.subCategory?.category?.name && (
-                                <span className="text-neutral-400 ml-1 text-xs">
-                                  — {skill.subCategory.category.name}
-                                </span>
-                              )}
-                            </SelectItem>
-                          ))}
+                          {[...workerSkills]
+                            .sort((a, b) => (a.subCategory?.name ?? '').localeCompare(b.subCategory?.name ?? ''))
+                            .map((skill) => (
+                              <SelectItem key={skill.subCategoryId} value={skill.subCategoryId}>
+                                {skill.subCategory?.name}
+                                {skill.subCategory?.category?.name && (
+                                  <span className="text-neutral-400 ml-1 text-xs">
+                                    — {skill.subCategory.category.name}
+                                  </span>
+                                )}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                     )}
@@ -268,7 +299,7 @@ export default function CreateBookingPage() {
               {/* Notes */}
               <div className="space-y-2">
                 <Label htmlFor="notes" className="flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-neutral-500" /> Additional Requirements (Optional)
+                  <FileText className="w-3.5 h-3.5 text-neutral-500" /> Additional Notes (Optional)
                 </Label>
                 <Textarea
                   id="notes"
@@ -282,7 +313,7 @@ export default function CreateBookingPage() {
                   Cancel
                 </Button>
                 <Button type="submit" className="flex-1" disabled={loading || !worker || workerSkills.length === 0}>
-                  {loading ? 'Submitting…' : 'Create Requirement'}
+                  {loading ? 'Submitting…' : 'Confirm Booking'}
                 </Button>
               </div>
             </form>

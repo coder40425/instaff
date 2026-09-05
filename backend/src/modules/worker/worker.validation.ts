@@ -203,8 +203,23 @@ export const availabilitySchema = z.object({
 // ── Location ──────────────────────────────────────────────────────────────────
 
 export const locationSchema = z.object({
-  latitude: z.number(),
-  longitude: z.number(),
-  city: z.string().optional(),
+  city: z.string().min(2, "City is required"),
   state: z.string().optional(),
+
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
+});
+
+export const workerLocationsSchema = z.object({
+  locations: z
+    .array(
+      z.object({
+        city: z.string().min(2, "City is required"),
+        state: z.string().optional(),
+        latitude: z.number().optional(),
+        longitude: z.number().optional(),
+        isPrimary: z.boolean().optional(),
+      })
+    )
+    .min(1, "At least one location is required"),
 });

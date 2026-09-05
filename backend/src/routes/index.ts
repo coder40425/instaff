@@ -10,6 +10,8 @@ import adminRoutes from "../modules/admin/admin.routes";
 import complaintsRoutes from "../modules/complaints/complaints.routes";
 import categoryRoutes from "../modules/categories/category.routes";
 import app from "../app";
+import requirementRoutes from "../modules/requirement/requirement.routes";
+import matchingRoutes from "../modules/matching/matching.routes";
 
 const router = express.Router();
 
@@ -43,4 +45,6 @@ router.use(
   categoryRoutes
 );
 
+router.use("/requirements", requirementRoutes);
+router.use("/matching", matchingRoutes);
 export default router;

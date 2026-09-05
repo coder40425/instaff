@@ -12,6 +12,10 @@ import {
   updateProfile,
   updateWorkerLocation,
   toggleAvailability,
+  getWorkerLocationsHandler,
+addWorkerLocationHandler,
+deleteWorkerLocationHandler,
+setPrimaryWorkerLocationHandler,
 } from "./worker.controller";
 
 const router = express.Router();
@@ -30,5 +34,25 @@ router.patch("/location", updateWorkerLocation);
 router.get("/earnings", earnings);
 router.get("/wallet", getWallet);
 router.get("/payment-info", getPlatformPaymentInfoHandler);
+
+router.get(
+  "/locations",
+  getWorkerLocationsHandler
+);
+
+router.post(
+  "/locations",
+  addWorkerLocationHandler
+);
+
+router.delete(
+  "/locations/:locationId",
+  deleteWorkerLocationHandler
+);
+
+router.patch(
+  "/locations/:locationId/primary",
+  setPrimaryWorkerLocationHandler
+);
 
 export default router;

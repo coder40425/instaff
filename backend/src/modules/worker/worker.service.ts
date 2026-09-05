@@ -37,8 +37,30 @@ function mapProfileData(data: any) {
 }
 
 const workerInclude = {
-  user:   { select: { id: true, name: true, phone: true, role: true } },
-  skills: { include: { subCategory: { include: { category: true } } } },
+  user: {
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      role: true,
+    },
+  },
+
+  skills: {
+    include: {
+      subCategory: {
+        include: {
+          category: true,
+        },
+      },
+    },
+  },
+
+  locations: {
+    orderBy: {
+      isPrimary: "desc" as const,
+    },
+  },
 } as const;
 
 // ── Profile functions ─────────────────────────────────────────────────────────
@@ -74,6 +96,198 @@ export const getWorkerProfile = async (userId: string) => {
   const profile = await prisma.workerProfile.findUnique({ where: { userId }, include: workerInclude });
   if (!profile) throw new Error("Worker profile not found");
   return profile;
+};
+
+export const getWorkerLocations = async (
+  userId: string
+) => {
+  const profile = await prisma.workerProfile.findUnique({
+    where: {
+      userId,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!profile) {
+    throw new Error("Worker profile not found");
+  }
+
+  return prisma.workerLocation.findMany({
+    where: {
+      workerProfileId: profile.id,
+    },
+    orderBy: [
+      {
+        isPrimary: "desc",
+      },
+      {
+        city: "asc",
+      },
+    ],
+  });
+};
+
+export const addWorkerLocation = async (
+  userId: string,
+  data: {
+    city: string;
+    state?: string;
+    latitude?: number;
+    longitude?: number;
+    isPrimary?: boolean;
+  }
+) => {
+  const profile = await prisma.workerProfile.findUnique({
+    where: {
+      userId,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!profile) {
+    throw new Error("Worker profile not found");
+  }
+
+  const existingLocations =
+    await prisma.workerLocation.findMany({
+      where: {
+        workerProfileId: profile.id,
+      },
+    });
+
+  const alreadyExists = existingLocations.some(
+    (location) =>
+      location.city.toLowerCase() ===
+        data.city.toLowerCase() &&
+      (location.state ?? "").toLowerCase() ===
+        (data.state ?? "").toLowerCase()
+  );
+
+  if (alreadyExists) {
+    throw new Error(
+      "This worker location already exists"
+    );
+  }
+
+  const shouldBePrimary =
+    data.isPrimary === true ||
+    existingLocations.length === 0;
+
+  if (shouldBePrimary) {
+    await prisma.workerLocation.updateMany({
+      where: {
+        workerProfileId: profile.id,
+      },
+      data: {
+        isPrimary: false,
+      },
+    });
+  }
+
+  return prisma.workerLocation.create({
+    data: {
+      workerProfileId: profile.id,
+      city: data.city,
+      state: data.state,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      isPrimary: shouldBePrimary,
+    },
+  });
+};
+
+export const deleteWorkerLocation = async (
+  userId: string,
+  locationId: string
+) => {
+  const profile = await prisma.workerProfile.findUnique({
+    where: {
+      userId,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!profile) {
+    throw new Error("Worker profile not found");
+  }
+
+  const location =
+    await prisma.workerLocation.findFirst({
+      where: {
+        id: locationId,
+        workerProfileId: profile.id,
+      },
+    });
+
+  if (!location) {
+    throw new Error("Location not found");
+  }
+
+  if (location.isPrimary) {
+    throw new Error(
+      "Primary location cannot be deleted. Set another location as primary first."
+    );
+  }
+
+  return prisma.workerLocation.delete({
+    where: {
+      id: locationId,
+    },
+  });
+};
+
+export const setPrimaryWorkerLocation = async (
+  userId: string,
+  locationId: string
+) => {
+  const profile = await prisma.workerProfile.findUnique({
+    where: {
+      userId,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!profile) {
+    throw new Error("Worker profile not found");
+  }
+
+  const location =
+    await prisma.workerLocation.findFirst({
+      where: {
+        id: locationId,
+        workerProfileId: profile.id,
+      },
+    });
+
+  if (!location) {
+    throw new Error("Location not found");
+  }
+
+  await prisma.workerLocation.updateMany({
+    where: {
+      workerProfileId: profile.id,
+    },
+    data: {
+      isPrimary: false,
+    },
+  });
+
+  return prisma.workerLocation.update({
+    where: {
+      id: locationId,
+    },
+    data: {
+      isPrimary: true,
+    },
+  });
 };
 
 export const updateWorkerProfile = async (userId: string, data: any) => {

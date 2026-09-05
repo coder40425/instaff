@@ -10,7 +10,7 @@ import { Textarea } from '../../components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { workerService, adminService } from '../../services/api';
 import { useState } from 'react';
-import { Search, UserX, UserCheck, Star, User, Globe, GraduationCap } from 'lucide-react';
+import { Search, UserX, UserCheck, Star, User, AlertTriangle } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -50,9 +50,29 @@ export default function WorkerManagement() {
   const [suspendTarget, setSuspendTarget] = useState<any>(null);
   const [suspendReason, setSuspendReason] = useState('');
 
+  // NOTE ON DATA SOURCE:
+  // `/workers` is the CUSTOMER-SAFE discovery endpoint — the backend always
+  // filters isVerified=true & isSuspended=false there, by design. That means
+  // this screen, sourced from workerService.getAll(), can only ever show
+  // verified, non-suspended workers — it structurally CANNOT show pending or
+  // rejected workers. Pending workers already have their own dedicated screen
+  // (PendingWorkers.tsx via GET /admin/workers/pending), which we surface a
+  // count/link for below.
+  //
+  // A true "all worker states in one admin table" view (pending + rejected +
+  // suspended + active, in a single list with filters) would require a
+  // dedicated admin endpoint such as GET /admin/workers that returns every
+  // worker regardless of state. That endpoint is NOT present in the supplied
+  // backend contract, so it is not implemented here — see the banner below
+  // and the final report for the explicit callout.
   const { data: workers, isLoading } = useQuery({
     queryKey: ['all-workers'],
     queryFn: () => workerService.getAll({}),
+  });
+
+  const { data: pendingWorkers } = useQuery({
+    queryKey: ['pending-workers'],
+    queryFn: adminService.getPendingWorkers,
   });
 
   const suspendMutation = useMutation({
@@ -96,15 +116,40 @@ export default function WorkerManagement() {
       worker.skillCategory?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const pendingCount = pendingWorkers?.length ?? 0;
+
   return (
     <AdminLayout>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Worker Management</h1>
           <p className="text-neutral-600 dark:text-neutral-400 mt-1">
-            Manage all workers on the platform
+            Manage verified workers on the platform
           </p>
         </div>
+
+        {/* Explicit callout: this list only shows verified, non-suspended workers,
+            because that's all the customer-safe /workers endpoint can return. */}
+        <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+          <CardContent className="p-4 flex items-start gap-3">
+            <AlertTriangle className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-blue-800 dark:text-blue-200">
+              <p className="font-medium">
+                This list shows verified, active workers only.
+              </p>
+              <p className="mt-0.5 text-blue-700 dark:text-blue-300">
+                {pendingCount > 0
+                  ? `There ${pendingCount === 1 ? 'is' : 'are'} ${pendingCount} worker${pendingCount === 1 ? '' : 's'} awaiting verification — review them on the `
+                  : 'Workers awaiting verification appear on the '}
+                <a href="/admin/workers/pending" className="underline font-medium">
+                  Pending Workers
+                </a>{' '}
+                page. Rejected workers are not currently listable from the frontend
+                because no backend endpoint returns them.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardContent className="p-6">

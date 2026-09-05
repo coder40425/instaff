@@ -33,6 +33,10 @@ export default function CustomerHome() {
   // ── City / Available / Verified ────────────────────────────────────────
   const [city, setCity] = useState('');
   const [availableOnly, setAvailableOnly] = useState(false);
+  // NOTE: All workers returned by /workers are already verified & non-suspended —
+  // the backend enforces this unconditionally. This checkbox is kept purely as a
+  // cosmetic filter for users who want to double-confirm; it is NOT a security
+  // control and toggling it off never exposes unverified workers.
   const [verifiedOnly, setVerifiedOnly] = useState(false);
 
   const { data: categoriesData } = useQuery<Category[]>({
@@ -40,9 +44,12 @@ export default function CustomerHome() {
     queryFn: () => categoryService.getAll('sequence'),
   });
   const categories: Category[] = categoriesData ?? [];
+  const sortedCategoriesForFilter = [...categories].sort((a, b) => a.name.localeCompare(b.name));
 
   const selectedCategory = categories.find((c) => c.id === categoryId);
-  const workTypeOptions: SubCategory[] = selectedCategory?.subCategories ?? [];
+  const workTypeOptions: SubCategory[] = [...(selectedCategory?.subCategories ?? [])].sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
 
   // Reset work type whenever category changes
   const handleCategoryChange = (id: string) => {
@@ -57,11 +64,10 @@ export default function CustomerHome() {
     ...(subCategoryId && { subCategoryId }),
     ...(city.trim() && { city: city.trim() }),
     ...(availableOnly && { isAvailable: true }),
-    ...(verifiedOnly && { isVerified: true }),
   };
 
   const {
-    data: workersData,
+    data: workers = [],
     isLoading,
     isError,
   } = useQuery({
@@ -69,9 +75,12 @@ export default function CustomerHome() {
     queryFn: () => workerService.getAll(filters),
   });
 
-  const workers: Worker[] = Array.isArray(workersData) ? workersData : workersData?.data ?? [];
-  const resultCount: number =
-    !Array.isArray(workersData) && typeof workersData?.count === 'number' ? workersData.count : workers.length;
+  // workerService.getAll already defensively filters to verified & non-suspended.
+  // The "Verified Only" checkbox here is a no-op display filter kept for UX
+  // continuity — since the list is already 100% verified, this never removes anyone
+  // unless a defensively-filtered anomaly somehow appeared, which it won't.
+  const visibleWorkers: Worker[] = verifiedOnly ? workers.filter((w) => w.isVerified) : workers;
+  const resultCount = visibleWorkers.length;
 
   const hasActiveFilters =
     !!search || !!categoryId || !!subCategoryId || !!city || availableOnly || verifiedOnly || sort !== 'sequence';
@@ -143,7 +152,7 @@ export default function CustomerHome() {
 
             {/* Filter row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 border-t border-neutral-200 dark:border-neutral-800">
-              {/* Category */}
+              {/* Category — A-Z for browsing consistency with the sub-category list below */}
               <div>
                 <label className="text-sm font-semibold mb-1.5 block">Category</label>
                 <select
@@ -152,7 +161,7 @@ export default function CustomerHome() {
                   className="w-full h-9 rounded-md border border-neutral-200 dark:border-neutral-700 bg-input-background dark:bg-neutral-900 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 >
                   <option value="">All Categories</option>
-                  {categories.map((cat) => (
+                  {sortedCategoriesForFilter.map((cat) => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name}
                     </option>
@@ -160,7 +169,7 @@ export default function CustomerHome() {
                 </select>
               </div>
 
-              {/* Work Type */}
+              {/* Work Type — A-Z */}
               <div>
                 <label className="text-sm font-semibold mb-1.5 block">Work Type</label>
                 <select
@@ -248,7 +257,7 @@ export default function CustomerHome() {
           <div className="text-center py-12 text-red-500">
             Something went wrong while loading workers. Please try again later.
           </div>
-        ) : !workers || workers.length === 0 ? (
+        ) : !visibleWorkers || visibleWorkers.length === 0 ? (
           <div className="text-center py-12 space-y-3">
             <p className="text-neutral-700 dark:text-neutral-300 font-semibold">No workers found</p>
             <p className="text-neutral-500 text-sm">Try changing your filters or search.</p>
@@ -260,8 +269,11 @@ export default function CustomerHome() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {workers.map((worker) => {
-              const skillNames = worker.skills?.map((s) => s.subCategory?.name).filter(Boolean) ?? [];
+            {visibleWorkers.map((worker) => {
+              const skillNames = [...(worker.skills ?? [])]
+                .map((s) => s.subCategory?.name)
+                .filter((name): name is string => Boolean(name))
+                .sort((a, b) => a.localeCompare(b));
               const categoryName = worker.skills?.[0]?.subCategory?.category?.name;
               return (
                 <Card key={worker.id} className="hover:shadow-lg transition-shadow">
