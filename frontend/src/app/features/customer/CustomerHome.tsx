@@ -6,8 +6,8 @@ import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
-import { Checkbox } from '../../components/ui/checkbox';
 import { workerService, categoryService } from '../../services/api';
+import { Checkbox } from '../../components/ui/checkbox';
 import { Star, MapPin, Search, CheckCircle2 } from 'lucide-react';
 import type { Category, SubCategory, Worker, WorkerDirectoryFilters, WorkerDirectorySort } from '../../types';
 
@@ -37,7 +37,6 @@ export default function CustomerHome() {
   // the backend enforces this unconditionally. This checkbox is kept purely as a
   // cosmetic filter for users who want to double-confirm; it is NOT a security
   // control and toggling it off never exposes unverified workers.
-  const [verifiedOnly, setVerifiedOnly] = useState(false);
 
   const { data: categoriesData } = useQuery<Category[]>({
     queryKey: ['categories', 'sequence'],
@@ -57,14 +56,14 @@ export default function CustomerHome() {
     setSubCategoryId('');
   };
 
-  const filters: WorkerDirectoryFilters = {
-    sort,
-    ...(search && { search }),
-    ...(categoryId && { categoryId }),
-    ...(subCategoryId && { subCategoryId }),
-    ...(city.trim() && { city: city.trim() }),
-    ...(availableOnly && { isAvailable: true }),
-  };
+ const filters: WorkerDirectoryFilters = {
+  sort,
+  ...(search && { search }),
+  ...(categoryId && { categoryId }),
+  ...(subCategoryId && { subCategoryId }),
+  ...(city.trim() && { city: city.trim() }),
+  ...(availableOnly && { isAvailable: true }),
+};
 
   const {
     data: workers = [],
@@ -79,11 +78,16 @@ export default function CustomerHome() {
   // The "Verified Only" checkbox here is a no-op display filter kept for UX
   // continuity — since the list is already 100% verified, this never removes anyone
   // unless a defensively-filtered anomaly somehow appeared, which it won't.
-  const visibleWorkers: Worker[] = verifiedOnly ? workers.filter((w) => w.isVerified) : workers;
+ const visibleWorkers: Worker[] = workers;
   const resultCount = visibleWorkers.length;
 
-  const hasActiveFilters =
-    !!search || !!categoryId || !!subCategoryId || !!city || availableOnly || verifiedOnly || sort !== 'sequence';
+ const hasActiveFilters =
+  !!search ||
+  !!categoryId ||
+  !!subCategoryId ||
+  !!city ||
+  availableOnly ||
+  sort !== 'sequence';
 
   const clearFilters = () => {
     setSearchInput('');
@@ -92,7 +96,6 @@ export default function CustomerHome() {
     setSubCategoryId('');
     setCity('');
     setAvailableOnly(false);
-    setVerifiedOnly(false);
     setSort('sequence');
   };
 
@@ -205,16 +208,6 @@ export default function CustomerHome() {
                     Available Only
                   </label>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="verified"
-                    checked={verifiedOnly}
-                    onCheckedChange={(c) => setVerifiedOnly(c as boolean)}
-                  />
-                  <label htmlFor="verified" className="text-sm cursor-pointer">
-                    Verified Only
-                  </label>
-                </div>
               </div>
             </div>
 
@@ -322,29 +315,38 @@ export default function CustomerHome() {
                     </div>
 
                     <div className="space-y-1.5 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                        <span>{worker.rating || 0}/5</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
-                        <MapPin className="w-4 h-4" />
-                        <span>
-                          {worker.city ? `${worker.city}${worker.state ? `, ${worker.state}` : ''}` : 'Location not set'}
-                        </span>
-                      </div>
-                      <div className="text-neutral-600 dark:text-neutral-400">Experience: {worker.experience} years</div>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-block w-2 h-2 rounded-full ${
-                            worker.isAvailable ? 'bg-green-500' : 'bg-neutral-300 dark:bg-neutral-600'
-                          }`}
-                        />
-                        <span className="text-neutral-600 dark:text-neutral-400">
-                          {worker.isAvailable ? 'Available' : 'Not available'}
-                        </span>
-                      </div>
-                      <div className="font-semibold text-lg">₹{worker.expectedSalary}/month</div>
-                    </div>
+  <div className="flex items-center gap-2">
+    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+    <span>{worker.rating || 0}/5</span>
+  </div>
+
+  <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
+    <MapPin className="w-4 h-4" />
+    <span>
+      {worker.city
+        ? `${worker.city}${worker.state ? `, ${worker.state}` : ''}`
+        : 'Location not set'}
+    </span>
+  </div>
+
+  <div className="text-neutral-600 dark:text-neutral-400">
+    Experience: {worker.experience} years
+  </div>
+
+  <div className="flex items-center gap-2">
+    <span
+      className={`inline-block w-2 h-2 rounded-full ${
+        worker.isAvailable
+          ? 'bg-green-500'
+          : 'bg-neutral-300 dark:bg-neutral-600'
+      }`}
+    />
+
+    <span className="text-neutral-600 dark:text-neutral-400">
+      {worker.isAvailable ? 'Available' : 'Not available'}
+    </span>
+  </div>
+</div>
 
                     <div className="flex gap-2">
                       <Button variant="outline" className="flex-1" onClick={() => navigate(`/workers/${worker.id}`)}>

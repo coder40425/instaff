@@ -1,23 +1,5 @@
 import prisma from "../../config/prisma";
-
-const workerInclude = {
-  user: {
-    select: {
-      id: true,
-      name: true,
-    },
-  },
-
-  skills: {
-    include: {
-      subCategory: {
-        include: {
-          category: true,
-        },
-      },
-    },
-  },
-} as const;
+import { customerWorkerSelect } from "../worker/worker.public";
 
 export const getWorkers = async (filters: {
   categoryId?: string;
@@ -150,7 +132,9 @@ export const getWorkers = async (filters: {
 
   const workers = await prisma.workerProfile.findMany({
     where,
-    include: workerInclude,
+
+    // 🔐 CUSTOMER-SAFE RESPONSE
+    select: customerWorkerSelect,
   });
 
   if (sort === "sequence") {
@@ -192,7 +176,8 @@ export const getWorkerById = async (workerId: string) => {
       isSuspended: false,
     },
 
-    include: workerInclude,
+    // 🔐 CUSTOMER-SAFE RESPONSE
+    select: customerWorkerSelect,
   });
 
   if (!worker) {

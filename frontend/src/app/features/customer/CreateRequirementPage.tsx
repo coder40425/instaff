@@ -168,7 +168,6 @@ export default function CreateRequirementPage() {
             <CardContent>
               <div className="flex items-center justify-between gap-4">
                 <p className="font-semibold text-lg">{preferredWorker.user?.name}</p>
-                <Badge variant="secondary">₹{preferredWorker.expectedSalary}/mo</Badge>
               </div>
             </CardContent>
           </Card>

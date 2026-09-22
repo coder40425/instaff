@@ -12,6 +12,7 @@ import categoryRoutes from "../modules/categories/category.routes";
 import app from "../app";
 import requirementRoutes from "../modules/requirement/requirement.routes";
 import matchingRoutes from "../modules/matching/matching.routes";
+import crmRoutes from "../modules/crm/crm.routes";
 
 const router = express.Router();
 
@@ -34,6 +35,7 @@ router.use(
 );
 
 router.use("/admin", adminRoutes);
+router.use("/admin/crm", crmRoutes);
 
 router.use(
   "/complaints",

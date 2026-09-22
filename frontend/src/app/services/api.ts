@@ -8,8 +8,14 @@ import type {
   WorkerDirectoryFilters,
   Requirement,
   RequirementCandidate,
-  WorkerProfile,
   Category,
+  PublicWorkerProfile,
+  // CRM
+  CrmOverview,
+  CrmRequirementFilters,
+  CrmRequirementsResponse,
+  CrmRequirementPipeline,
+  CrmRequirementListItem,
 } from '../types';
 
 const API_BASE =
@@ -33,11 +39,14 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/auth/login';
-    }
+    console.error(
+      'API ERROR:',
+      error.response?.status,
+      error.config?.method?.toUpperCase(),
+      error.config?.url,
+      error.response?.data
+    );
+
     return Promise.reject(error);
   }
 );
@@ -64,39 +73,49 @@ export const categoryService = {
 };
 
 export const workerService = {
-  // CUSTOMER DISCOVERY — backend ALWAYS filters isVerified=true, isSuspended=false.
-  // The frontend must never rely on its own filtering as the security boundary;
-  // we only defensively drop anything that slips through unexpectedly.
-  getAll: async (params?: WorkerDirectoryFilters): Promise<WorkerProfile[]> => {
-    const response = await api.get('/workers', {
+  // CUSTOMER DISCOVERY
+  getAll: async (
+    params?: WorkerDirectoryFilters
+  ): Promise<PublicWorkerProfile[]> => {
+    const response = await api.get("/workers", {
       params,
     });
 
-    const workers: WorkerProfile[] = response.data.data ?? [];
+    const workers: PublicWorkerProfile[] =
+      response.data.data ?? [];
 
-    // Defensive filter only — NOT the security mechanism. The backend is the
-    // source of truth. This just guards the UI in case of an unexpected payload.
-    return workers.filter((w) => w.isVerified === true && w.isSuspended !== true);
+    // Backend is the actual security boundary.
+    // This is only a defensive UI check.
+    return workers.filter(
+      (worker) => worker.isVerified === true
+    );
   },
 
-  getById: async (id: string): Promise<WorkerProfile | null> => {
+  getById: async (
+    id: string
+  ): Promise<PublicWorkerProfile | null> => {
     try {
       const response = await api.get(`/workers/${id}`);
-      const worker: WorkerProfile | undefined = response.data.data;
 
-      // Defensive check — backend already excludes unverified/suspended workers
-      // from this endpoint, but we never render one to a customer if it slips through.
-      if (!worker || worker.isVerified !== true || worker.isSuspended === true) {
+      const worker:
+        | PublicWorkerProfile
+        | undefined = response.data.data;
+
+      if (!worker || worker.isVerified !== true) {
         return null;
       }
+
       return worker;
     } catch (error: any) {
       if (error.response?.status === 404) {
         return null;
       }
+
       throw error;
     }
   },
+
+  // EVERYTHING BELOW THIS STAYS EXACTLY AS IT IS
 
   // WORKER
   updateAvailability: async (isAvailable: boolean) => {
@@ -406,6 +425,117 @@ export const matchingService = {
   ): Promise<RequirementCandidate> => {
     const response = await api.post(
       `/matching/requirements/${requirementId}/assign`,
+      {
+        workerProfileId,
+      }
+    );
+
+    return response.data.data;
+  },
+};
+
+// ── CRM / ADMIN OPERATIONS ───────────────────────────────────────────────────
+
+export const crmService = {
+  // CRM overview dashboard
+  getOverview: async (): Promise<CrmOverview> => {
+    const response = await api.get('/admin/crm/overview');
+
+    return response.data.data;
+  },
+
+  // Requirement operations list
+  getRequirements: async (
+    params?: CrmRequirementFilters
+  ): Promise<CrmRequirementsResponse> => {
+    const response = await api.get(
+      '/admin/crm/requirements',
+      {
+        params,
+      }
+    );
+
+    return {
+      data: response.data.data ?? [],
+      pagination: response.data.pagination,
+    };
+  },
+
+  // Full requirement detail
+  getRequirement: async (
+    requirementId: string
+  ): Promise<Requirement> => {
+    if (!requirementId) {
+      throw new Error('Requirement ID is required');
+    }
+
+    const response = await api.get(
+      `/admin/crm/requirements/${requirementId}`
+    );
+
+    return response.data.data;
+  },
+
+  // Requirement operational pipeline
+  getRequirementPipeline: async (
+    requirementId: string
+  ): Promise<CrmRequirementPipeline> => {
+    if (!requirementId) {
+      throw new Error('Requirement ID is required');
+    }
+
+    const response = await api.get(
+      `/admin/crm/requirements/${requirementId}/pipeline`
+    );
+
+    return response.data.data;
+  },
+
+  // Generate / refresh matching candidates
+  generateMatches: async (
+    requirementId: string
+  ): Promise<RequirementCandidate[]> => {
+    if (!requirementId) {
+      throw new Error('Requirement ID is required');
+    }
+
+    const response = await api.post(
+      `/admin/crm/requirements/${requirementId}/match`
+    );
+
+    return response.data.data ?? [];
+  },
+
+  // Build PRIMARY / BACKUP assignment pool
+  buildAssignmentPool: async (
+    requirementId: string
+  ): Promise<RequirementCandidate[]> => {
+    if (!requirementId) {
+      throw new Error('Requirement ID is required');
+    }
+
+    const response = await api.post(
+      `/admin/crm/requirements/${requirementId}/assignment-pool`
+    );
+
+    return response.data.data ?? [];
+  },
+
+  // Assign worker using workerProfileId
+  assignWorker: async (
+    requirementId: string,
+    workerProfileId: string
+  ): Promise<RequirementCandidate> => {
+    if (!requirementId) {
+      throw new Error('Requirement ID is required');
+    }
+
+    if (!workerProfileId) {
+      throw new Error('workerProfileId is required');
+    }
+
+    const response = await api.post(
+      `/admin/crm/requirements/${requirementId}/assign`,
       {
         workerProfileId,
       }

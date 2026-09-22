@@ -2,7 +2,7 @@ import { Link, useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
 import { ThemeToggle } from '../components/ThemeToggle';
-import { BarChart3, Users, Calendar, MessageSquare, CheckSquare, LogOut, Menu, X, ChevronRight } from 'lucide-react';
+import { BarChart3, Users, Calendar, MessageSquare, CheckSquare, LogOut, Menu, X, ChevronRight, Briefcase, ClipboardList } from 'lucide-react';
 import { useState } from 'react';
 
 const navItems = [
@@ -12,6 +12,9 @@ const navItems = [
   { path: '/admin/workers', icon: Users, label: 'Worker Management' },
   { path: '/admin/bookings', icon: Calendar, label: 'Bookings' },
   { path: '/admin/complaints', icon: MessageSquare, label: 'Complaints' },
+  // ── CRM / Operations (new) ──────────────────────────────────────────
+  { path: '/admin/crm', icon: Briefcase, label: 'CRM / Operations' },
+  { path: '/admin/crm/requirements', icon: ClipboardList, label: 'CRM Requirements' },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

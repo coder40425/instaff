@@ -1,4 +1,5 @@
 import prisma from "../../config/prisma";
+import { customerWorkerSelect } from "../worker/worker.public";
 
 type RequirementForMatching = {
   id: string;
@@ -260,7 +261,8 @@ export const findMatchingWorkers = async (
 
 export const generateRequirementMatches = async (
   requirementId: string,
-  userId: string
+  userId: string,
+  isAdmin = false
 ) => {
   const requirement =
     await prisma.requirement.findUnique({
@@ -273,9 +275,12 @@ export const generateRequirementMatches = async (
     throw new Error("Requirement not found");
   }
 
-  if (requirement.createdById !== userId) {
-    throw new Error("Unauthorized");
-  }
+ if (
+  !isAdmin &&
+  requirement.createdById !== userId
+) {
+  throw new Error("Unauthorized");
+}
 
   if (
     requirement.status !== "OPEN" &&
@@ -377,18 +382,29 @@ export const generateRequirementMatches = async (
   }
 
   return prisma.requirementCandidate.findMany({
-    where: {
-      requirementId,
-    },
+  where: {
+    requirementId,
+  },
 
-    include: {
-      workerProfile: {
-        include: workerInclude,
-      },
-    },
+  select: {
+    id: true,
+    requirementId: true,
+    workerProfileId: true,
+    status: true,
+    matchScore: true,
+    matchReason: true,
+    rank: true,
+    assignedAt: true,
+    createdAt: true,
+    updatedAt: true,
 
-    orderBy: {
-      rank: "asc",
+    workerProfile: {
+      select: customerWorkerSelect,
     },
-  });
+  },
+
+  orderBy: {
+    rank: "asc",
+  },
+});
 };

@@ -13,7 +13,10 @@ import {
 } from '../../components/ui/select';
 import { Badge } from '../../components/ui/badge';
 import { bookingService } from '../../services/api';
-import type { BookingType, WorkerProfile } from '../../types';
+import type {
+  BookingType,
+  PublicWorkerProfile,
+} from '../../types';
 import { CalendarClock, MapPin, Calendar, Timer, IndianRupee, FileText, User, ClipboardList, ArrowRight } from 'lucide-react';
 
 interface BookingForm {
@@ -30,7 +33,8 @@ interface BookingForm {
 export default function CreateBookingPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const worker: WorkerProfile | undefined = location.state?.worker;
+const worker: PublicWorkerProfile | undefined =
+  location.state?.worker;
   const [loading, setLoading] = useState(false);
   const [bookingType, setBookingType] = useState<BookingType>('INSTANT');
 
@@ -144,7 +148,6 @@ export default function CreateBookingPage() {
                       ))}
                   </div>
                 </div>
-                <p className="font-bold text-lg whitespace-nowrap">₹{worker.expectedSalary}<span className="text-xs font-normal text-neutral-500">/mo</span></p>
               </div>
             </CardContent>
           </Card>

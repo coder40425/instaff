@@ -127,8 +127,6 @@ export default function WorkerDetailsPage() {
   }
 
   const workerName = worker.user?.name;
-  const workerPhone = worker.user?.phone;
-
   // skills[] presented A-Z, per requirement
   const sortedSkills = [...(worker.skills ?? [])].sort((a, b) =>
     (a.subCategory?.name ?? '').localeCompare(b.subCategory?.name ?? '')
@@ -201,35 +199,36 @@ export default function WorkerDetailsPage() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2 text-left">
-                  <div>
-                    <p className="text-xs text-neutral-500">Rating</p>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                      <span className="font-semibold">{worker.rating || 0}/5</span>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-neutral-500">Location</p>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <MapPin className="w-4 h-4" />
-                      <span className="font-semibold text-sm">
-                        {worker.city}{worker.state ? `, ${worker.state}` : ''}
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-neutral-500">Phone</p>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Phone className="w-4 h-4" />
-                      <span className="font-semibold text-sm">{workerPhone}</span>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-neutral-500">Expected Salary</p>
-                    <span className="font-semibold">₹{worker.expectedSalary}/month</span>
-                  </div>
-                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-2 text-left">
+  <div>
+    <p className="text-xs text-neutral-500">Rating</p>
+    <div className="flex items-center gap-1 mt-0.5">
+      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+      <span className="font-semibold">
+        {worker.rating || 0}/5
+      </span>
+    </div>
+  </div>
+
+  <div>
+    <p className="text-xs text-neutral-500">Service Area</p>
+    <div className="flex items-center gap-1 mt-0.5">
+      <MapPin className="w-4 h-4" />
+      <span className="font-semibold text-sm">
+        {worker.city
+          ? `${worker.city}${worker.state ? `, ${worker.state}` : ''}`
+          : 'Location not set'}
+      </span>
+    </div>
+  </div>
+
+  <div>
+    <p className="text-xs text-neutral-500">Experience</p>
+    <span className="font-semibold text-sm">
+      {worker.experience} years
+    </span>
+  </div>
+</div>
 
                 <Button
                   size="lg"
@@ -253,45 +252,49 @@ export default function WorkerDetailsPage() {
           </SectionCard>
         )}
 
-        {/* ── Personal details ───────────────────────────────────────────────── */}
-        <SectionCard title="Personal Details">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <InfoRow icon={User}         label="Gender"         value={worker.gender} />
-            <InfoRow
-              icon={User}
-              label="Date of Birth"
-              value={
-                worker.dateOfBirth
-                  ? new Date(worker.dateOfBirth).toLocaleDateString('en-IN', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric',
-                    })
-                  : null
-              }
-            />
-            <InfoRow icon={Ruler}        label="Height"         value={worker.height ? `${worker.height} cm` : null} />
-            <InfoRow icon={Weight}       label="Weight"         value={worker.weight ? `${worker.weight} kg` : null} />
-            <InfoRow icon={GraduationCap} label="Education"     value={worker.education ? (EDUCATION_LABELS[worker.education] ?? worker.education) : null} />
-            <InfoRow icon={Heart}        label="Marital Status" value={worker.maritalStatus ? (MARITAL_LABELS[worker.maritalStatus] ?? worker.maritalStatus) : null} />
-          </div>
+        {/* ── Profile details ─────────────────────────────────────────────── */}
+<SectionCard title="Profile Details">
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <InfoRow
+      icon={User}
+      label="Gender"
+      value={worker.gender}
+    />
 
-          {worker.languagesKnown && worker.languagesKnown.length > 0 && (
-            <InfoRow
-              icon={Globe}
-              label="Languages Known"
-              value={
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {[...worker.languagesKnown].sort((a, b) => a.localeCompare(b)).map((lang: string) => (
-                    <Badge key={lang} variant="secondary" className="text-xs">
-                      {lang}
-                    </Badge>
-                  ))}
-                </div>
-              }
-            />
-          )}
-        </SectionCard>
+    <InfoRow
+      icon={GraduationCap}
+      label="Education"
+      value={
+        worker.education
+          ? (EDUCATION_LABELS[worker.education] ?? worker.education)
+          : null
+      }
+    />
+  </div>
+
+  {worker.languagesKnown &&
+    worker.languagesKnown.length > 0 && (
+      <InfoRow
+        icon={Globe}
+        label="Languages Known"
+        value={
+          <div className="flex flex-wrap gap-1 mt-1">
+            {[...worker.languagesKnown]
+              .sort((a, b) => a.localeCompare(b))
+              .map((lang: string) => (
+                <Badge
+                  key={lang}
+                  variant="secondary"
+                  className="text-xs"
+                >
+                  {lang}
+                </Badge>
+              ))}
+          </div>
+        }
+      />
+    )}
+</SectionCard>
 
         {/* ── Professional details ───────────────────────────────────────────── */}
         <SectionCard title="Professional Details">

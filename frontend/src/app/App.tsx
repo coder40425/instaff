@@ -35,6 +35,11 @@ import ComplaintManagement from './features/admin/ComplaintManagement';
 import AdminWallets from './features/admin/AdminWallets';
 import AdminPaymentSettings from './features/admin/AdminPaymentSettings';
 
+// ── CRM / Operations (new) ──────────────────────────────────────────────────
+import CrmOverview from './features/admin/crm/CrmOverview';
+import CrmRequirements from './features/admin/crm/CrmRequirements';
+import CrmRequirementDetails from './features/admin/crm/CrmRequirementDetails';
+
 import EmployerPortal from './features/employer/EmployerPortal';
 
 const queryClient = new QueryClient({
@@ -106,6 +111,11 @@ function AppRoutes() {
       <Route path="/admin/complaints" element={<ProtectedRoute allowedRoles={['ADMIN']}><ComplaintManagement /></ProtectedRoute>} />
       <Route path="/admin/wallets" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminWallets /></ProtectedRoute>} />
       <Route path="/admin/payment-settings" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminPaymentSettings /></ProtectedRoute>} />
+
+      {/* ── CRM / Operations routes (new) ── */}
+      <Route path="/admin/crm" element={<ProtectedRoute allowedRoles={['ADMIN']}><CrmOverview /></ProtectedRoute>} />
+      <Route path="/admin/crm/requirements" element={<ProtectedRoute allowedRoles={['ADMIN']}><CrmRequirements /></ProtectedRoute>} />
+      <Route path="/admin/crm/requirements/:id" element={<ProtectedRoute allowedRoles={['ADMIN']}><CrmRequirementDetails /></ProtectedRoute>} />
 
       <Route path="/employer" element={<EmployerPortal />} />
       <Route path="*" element={<Navigate to="/" replace />} />

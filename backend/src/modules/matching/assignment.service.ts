@@ -1,10 +1,12 @@
 import prisma from "../../config/prisma";
+import { customerWorkerSelect } from "../worker/worker.public";
 
 // ── Build Assignment Pool ────────────────────────────────────────────────────
 
 export const buildAssignmentPool = async (
   requirementId: string,
-  userId: string
+  userId: string,
+  isAdmin = false
 ) => {
   const requirement =
     await prisma.requirement.findUnique({
@@ -17,9 +19,12 @@ export const buildAssignmentPool = async (
     throw new Error("Requirement not found");
   }
 
-  if (requirement.createdById !== userId) {
-    throw new Error("Unauthorized");
-  }
+ if (
+  !isAdmin &&
+  requirement.createdById !== userId
+) {
+  throw new Error("Unauthorized");
+}
 
   if (
     requirement.status === "CANCELLED" ||
@@ -201,33 +206,36 @@ export const buildAssignmentPool = async (
   }
 
   return prisma.requirementCandidate.findMany({
-    where: {
-      requirementId,
-    },
+  where: {
+    requirementId,
+  },
 
-    include: {
-      workerProfile: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              phone: true,
-            },
-          },
-        },
-      },
-    },
+  select: {
+    id: true,
+    requirementId: true,
+    workerProfileId: true,
+    status: true,
+    matchScore: true,
+    matchReason: true,
+    rank: true,
+    assignedAt: true,
+    createdAt: true,
+    updatedAt: true,
 
-    orderBy: [
-      {
-        status: "asc",
-      },
-      {
-        rank: "asc",
-      },
-    ],
-  });
+    workerProfile: {
+      select: customerWorkerSelect,
+    },
+  },
+
+  orderBy: [
+    {
+      status: "asc",
+    },
+    {
+      rank: "asc",
+    },
+  ],
+});
 };
 
 // ── Assign Requirement Worker ─────────────────────────────────────────────────
@@ -235,7 +243,8 @@ export const buildAssignmentPool = async (
 export const assignRequirementWorker = async (
   requirementId: string,
   workerProfileId: string,
-  userId: string
+  userId: string,
+  isAdmin = false
 ) => {
   const requirement =
     await prisma.requirement.findUnique({
@@ -248,9 +257,12 @@ export const assignRequirementWorker = async (
     throw new Error("Requirement not found");
   }
 
-  if (requirement.createdById !== userId) {
-    throw new Error("Unauthorized");
-  }
+  if (
+  !isAdmin &&
+  requirement.createdById !== userId
+) {
+  throw new Error("Unauthorized");
+}
 
   if (
     requirement.status === "CANCELLED" ||
@@ -423,5 +435,26 @@ export const assignRequirementWorker = async (
       return updatedCandidate;
     });
 
-  return result;
+  return prisma.requirementCandidate.findUnique({
+  where: {
+    id: result.id,
+  },
+
+  select: {
+    id: true,
+    requirementId: true,
+    workerProfileId: true,
+    status: true,
+    matchScore: true,
+    matchReason: true,
+    rank: true,
+    assignedAt: true,
+    createdAt: true,
+    updatedAt: true,
+
+    workerProfile: {
+      select: customerWorkerSelect,
+    },
+  },
+});
 };

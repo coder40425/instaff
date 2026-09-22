@@ -1,27 +1,26 @@
 import prisma from "../../config/prisma";
 import { generateRequirementMatches } from "../matching/matching.service";
+import { customerWorkerSelect } from "../worker/worker.public";
 
 const requirementInclude = {
   category: true,
   subCategory: true,
 
   candidates: {
-    include: {
+    select: {
+      id: true,
+      requirementId: true,
+      workerProfileId: true,
+      status: true,
+      matchScore: true,
+      matchReason: true,
+      rank: true,
+      assignedAt: true,
+      createdAt: true,
+      updatedAt: true,
+
       workerProfile: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              phone: true,
-            },
-          },
-          skills: {
-            include: {
-              subCategory: true,
-            },
-          },
-        },
+        select: customerWorkerSelect,
       },
     },
 
