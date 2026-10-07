@@ -16,7 +16,7 @@ const router = express.Router();
 
 router.use(
   authMiddleware,
-  authorizeRoles("CUSTOMER", "EMPLOYER")
+  authorizeRoles("CUSTOMER", "EMPLOYER", "PARTNER")
 );
 
 router.post(

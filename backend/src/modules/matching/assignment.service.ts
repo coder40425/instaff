@@ -1,5 +1,6 @@
 import prisma from "../../config/prisma";
 import { customerWorkerSelect } from "../worker/worker.public";
+import { assertRequirementOwner } from "../requirement/requirement.access";
 
 // ── Build Assignment Pool ────────────────────────────────────────────────────
 
@@ -19,12 +20,7 @@ export const buildAssignmentPool = async (
     throw new Error("Requirement not found");
   }
 
- if (
-  !isAdmin &&
-  requirement.createdById !== userId
-) {
-  throw new Error("Unauthorized");
-}
+  await assertRequirementOwner(userId, requirement, isAdmin);
 
   if (
     requirement.status === "CANCELLED" ||
@@ -218,6 +214,8 @@ export const buildAssignmentPool = async (
     matchScore: true,
     matchReason: true,
     rank: true,
+    offeredAt: true,
+    acceptedAt: true,
     assignedAt: true,
     createdAt: true,
     updatedAt: true,
@@ -257,12 +255,7 @@ export const assignRequirementWorker = async (
     throw new Error("Requirement not found");
   }
 
-  if (
-  !isAdmin &&
-  requirement.createdById !== userId
-) {
-  throw new Error("Unauthorized");
-}
+  await assertRequirementOwner(userId, requirement, isAdmin);
 
   if (
     requirement.status === "CANCELLED" ||
@@ -322,6 +315,10 @@ export const assignRequirementWorker = async (
     );
   }
 
+  if (candidate.status === "OFFERED") {
+    throw new Error("Worker already has a pending offer");
+  }
+
   if (
     candidate.status === "REJECTED" ||
     candidate.status === "EXPIRED"
@@ -360,6 +357,14 @@ export const assignRequirementWorker = async (
     );
   }
 
+  const owningPartner =
+    requirement.source === "PARTNER_CLIENT"
+      ? await prisma.partnerProfile.findUnique({
+          where: { userId: requirement.createdById },
+          select: { id: true },
+        })
+      : null;
+
   const result =
     await prisma.$transaction(async (tx) => {
       const existingAssignments =
@@ -386,8 +391,16 @@ export const assignRequirementWorker = async (
           },
 
           data: {
-            status: "ASSIGNED",
-            assignedAt: new Date(),
+            status: "OFFERED",
+            offeredAt: new Date(),
+            ...(candidate.partnerId
+              ? {}
+              : {
+                  partnerId:
+                    owningPartner?.id ??
+                    worker.partnerId ??
+                    null,
+                }),
           },
 
           include: {
@@ -405,33 +418,6 @@ export const assignRequirementWorker = async (
           },
         });
 
-      const newAssignedCount =
-        existingAssignments + 1;
-
-      // Your actual Prisma enum has no
-      // PARTIALLY_FILLED status.
-      const newStatus =
-        newAssignedCount >=
-        requirement.requiredWorkerCount
-          ? "FILLED"
-          : "MATCHING";
-
-      await tx.requirement.update({
-        where: {
-          id: requirementId,
-        },
-
-        data: {
-          status: newStatus,
-
-          ...(newStatus === "FILLED"
-            ? {
-                completedAt: new Date(),
-              }
-            : {}),
-        },
-      });
-
       return updatedCandidate;
     });
 
@@ -448,6 +434,8 @@ export const assignRequirementWorker = async (
     matchScore: true,
     matchReason: true,
     rank: true,
+    offeredAt: true,
+    acceptedAt: true,
     assignedAt: true,
     createdAt: true,
     updatedAt: true,

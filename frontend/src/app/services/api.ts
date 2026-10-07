@@ -10,6 +10,8 @@ import type {
   RequirementCandidate,
   Category,
   PublicWorkerProfile,
+  WorkerRequirementOffer,
+  WorkerRequirementOfferActionResult,
   // CRM
   CrmOverview,
   CrmRequirementFilters,
@@ -175,6 +177,29 @@ export const workerService = {
       `/worker/locations/${locationId}/primary`
     );
 
+    return response.data.data;
+  },
+
+  getRequirementOffers: async (): Promise<WorkerRequirementOffer[]> => {
+    const response = await api.get('/worker/requirements/offers');
+    return response.data.data;
+  },
+
+  acceptRequirementOffer: async (
+    candidateId: string
+  ): Promise<WorkerRequirementOfferActionResult> => {
+    const response = await api.post(
+      `/worker/requirements/offers/${candidateId}/accept`
+    );
+    return response.data.data;
+  },
+
+  rejectRequirementOffer: async (
+    candidateId: string
+  ): Promise<WorkerRequirementOfferActionResult> => {
+    const response = await api.post(
+      `/worker/requirements/offers/${candidateId}/reject`
+    );
     return response.data.data;
   },
 };
@@ -418,8 +443,8 @@ export const matchingService = {
     return response.data.data;
   },
 
-  // Assign a candidate worker — takes workerProfileId, NOT userId
-  assignWorker: async (
+  // Send the existing assignment offer; takes workerProfileId, NOT userId
+  sendAssignmentOffer: async (
     requirementId: string,
     workerProfileId: string
   ): Promise<RequirementCandidate> => {
@@ -521,8 +546,8 @@ export const crmService = {
     return response.data.data ?? [];
   },
 
-  // Assign worker using workerProfileId
-  assignWorker: async (
+  // Send the existing CRM assignment offer using workerProfileId
+  sendAssignmentOffer: async (
     requirementId: string,
     workerProfileId: string
   ): Promise<RequirementCandidate> => {

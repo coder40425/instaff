@@ -21,6 +21,7 @@ import type {
   EmploymentType,
   WorkMode,
   WorkGeography,
+  ShiftTiming,
   AssignmentMode,
   Worker,
 } from '../../types';
@@ -49,7 +50,7 @@ interface RequirementForm {
   city: string;
   state?: string;
   address?: string;
-  shiftTiming?: string;
+  shiftTiming?: ShiftTiming;
   salaryBudget?: number;
   minExperience?: number;
   joiningDate: string;
@@ -249,8 +250,28 @@ export default function CreateRequirementPage() {
                 {errors.joiningDate && <p className="text-sm text-red-500">{errors.joiningDate.message}</p>}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="shiftTiming">Shift Timing</Label>
-                <Input id="shiftTiming" placeholder="e.g. 9am – 6pm" {...register('shiftTiming')} />
+                <Label>Shift Timing</Label>
+                <Controller
+                  name="shiftTiming"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value ?? ''}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Not specified" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DAY">Day</SelectItem>
+                        <SelectItem value="NIGHT">Night</SelectItem>
+                        <SelectItem value="LIVE_IN_24_HOURS">
+                          Live-in / 24 Hours
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="salaryBudget" className="flex items-center gap-1.5">

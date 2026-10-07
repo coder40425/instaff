@@ -1,6 +1,10 @@
 import prisma from "../../config/prisma";
 import { generateRequirementMatches } from "../matching/matching.service";
 import { customerWorkerSelect } from "../worker/worker.public";
+import {
+  assertRequirementOwner,
+  getRequirementActor,
+} from "./requirement.access";
 
 const requirementInclude = {
   category: true,
@@ -15,6 +19,8 @@ const requirementInclude = {
       matchScore: true,
       matchReason: true,
       rank: true,
+      offeredAt: true,
+      acceptedAt: true,
       assignedAt: true,
       createdAt: true,
       updatedAt: true,
@@ -81,6 +87,8 @@ export const createRequirement = async (
   userId: string,
   data: any
 ) => {
+  const actor = await getRequirementActor(userId);
+
   const category = await prisma.category.findUnique({
     where: {
       id: data.categoryId,
@@ -155,6 +163,10 @@ export const createRequirement = async (
 
       // Prisma default is DRAFT.
       status: "DRAFT",
+      source:
+        actor.role === "PARTNER"
+          ? "PARTNER_CLIENT"
+          : "NEARPASSWAY_CUSTOMER",
     },
 
     include: {
@@ -171,6 +183,8 @@ export const createRequirement = async (
 export const getMyRequirements = async (
   userId: string
 ) => {
+  await getRequirementActor(userId);
+
   return prisma.requirement.findMany({
     where: {
       createdById: userId,
@@ -205,9 +219,7 @@ export const getRequirementById = async (
     throw new Error("Requirement not found");
   }
 
-  if (requirement.createdById !== userId) {
-    throw new Error("Unauthorized");
-  }
+  await assertRequirementOwner(userId, requirement);
 
   return requirement;
 };
@@ -232,9 +244,7 @@ export const updateRequirement = async (
     throw new Error("Requirement not found");
   }
 
-  if (requirement.createdById !== userId) {
-    throw new Error("Unauthorized");
-  }
+  await assertRequirementOwner(userId, requirement);
 
   // Requirements can only be edited while still being a draft.
   if (requirement.status !== "DRAFT") {
@@ -416,9 +426,7 @@ export const openRequirement = async (
     throw new Error("Requirement not found");
   }
 
-  if (requirement.createdById !== userId) {
-    throw new Error("Unauthorized");
-  }
+  await assertRequirementOwner(userId, requirement);
 
   if (requirement.status !== "DRAFT") {
     throw new Error(
@@ -493,9 +501,7 @@ export const cancelRequirement = async (
     throw new Error("Requirement not found");
   }
 
-  if (requirement.createdById !== userId) {
-    throw new Error("Unauthorized");
-  }
+  await assertRequirementOwner(userId, requirement);
 
   if (
     requirement.status === "FILLED" ||

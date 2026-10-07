@@ -12,7 +12,10 @@ import {
   getWorkerLocations,
 addWorkerLocation,
 deleteWorkerLocation,
-setPrimaryWorkerLocation,
+  setPrimaryWorkerLocation,
+  getWorkerRequirementOffers,
+  acceptWorkerRequirementOffer,
+  rejectWorkerRequirementOffer,
 } from "./worker.service";
 
 import {
@@ -214,5 +217,52 @@ export const setPrimaryWorkerLocationHandler = async (
       success: false,
       message: error.message,
     });
+  }
+};
+
+export const getWorkerRequirementOffersHandler = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const offers = await getWorkerRequirementOffers(
+      req.user!.userId
+    );
+
+    res.json({ success: true, data: offers });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const acceptWorkerRequirementOfferHandler = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const candidate = await acceptWorkerRequirementOffer(
+      req.user!.userId,
+      String(req.params.candidateId)
+    );
+
+    res.json({ success: true, data: candidate });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const rejectWorkerRequirementOfferHandler = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const candidate = await rejectWorkerRequirementOffer(
+      req.user!.userId,
+      String(req.params.candidateId)
+    );
+
+    res.json({ success: true, data: candidate });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
   }
 };

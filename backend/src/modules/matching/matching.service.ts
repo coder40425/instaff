@@ -1,5 +1,6 @@
 import prisma from "../../config/prisma";
 import { customerWorkerSelect } from "../worker/worker.public";
+import { assertRequirementOwner } from "../requirement/requirement.access";
 
 type RequirementForMatching = {
   id: string;
@@ -24,6 +25,7 @@ type RequirementForMatching = {
 
 type MatchResult = {
   workerProfileId: string;
+  partnerId: string | null;
   score: number;
   reason: string;
 };
@@ -231,6 +233,7 @@ export const findMatchingWorkers = async (
 
     matches.push({
       workerProfileId: worker.id,
+      partnerId: worker.partnerId,
       score,
       reason: reasons.join(", "),
     });
@@ -275,12 +278,7 @@ export const generateRequirementMatches = async (
     throw new Error("Requirement not found");
   }
 
- if (
-  !isAdmin &&
-  requirement.createdById !== userId
-) {
-  throw new Error("Unauthorized");
-}
+  await assertRequirementOwner(userId, requirement, isAdmin);
 
   if (
     requirement.status !== "OPEN" &&
@@ -302,6 +300,14 @@ export const generateRequirementMatches = async (
 
   const matches =
     await findMatchingWorkers(requirement);
+
+  const owningPartner =
+    requirement.source === "PARTNER_CLIENT"
+      ? await prisma.partnerProfile.findUnique({
+          where: { userId: requirement.createdById },
+          select: { id: true },
+        })
+      : null;
 
   const existingCandidates =
     await prisma.requirementCandidate.findMany({
@@ -346,7 +352,10 @@ export const generateRequirementMatches = async (
       previousStatus === "SHORTLISTED" ||
       previousStatus === "PRIMARY" ||
       previousStatus === "BACKUP" ||
-      previousStatus === "ASSIGNED";
+      previousStatus === "OFFERED" ||
+      previousStatus === "ASSIGNED" ||
+      previousStatus === "REJECTED" ||
+      previousStatus === "EXPIRED";
 
     await prisma.requirementCandidate.upsert({
       where: {
@@ -365,6 +374,7 @@ export const generateRequirementMatches = async (
         matchScore: match.score,
         matchReason: match.reason,
         rank: index + 1,
+        partnerId: owningPartner?.id ?? match.partnerId,
       },
 
       update: {
