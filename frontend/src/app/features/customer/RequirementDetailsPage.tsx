@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 
 import CustomerLayout from '../../layouts/CustomerLayout';
+import PartnerLayout from '../../layouts/PartnerLayout';
+import { useAuth } from '../../hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -105,6 +107,10 @@ export default function RequirementDetailsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isPartner = user?.role === 'PARTNER';
+  const PageLayout = isPartner ? PartnerLayout : CustomerLayout;
+  const requirementsPath = isPartner ? '/partner/requirements' : '/customer/requirements';
 
   const {
     data: requirement,
@@ -205,17 +211,17 @@ export default function RequirementDetailsPage() {
 
   if (isLoading) {
     return (
-      <CustomerLayout>
+      <PageLayout>
         <div className="flex items-center justify-center py-20 text-neutral-500">
           Loading requirement…
         </div>
-      </CustomerLayout>
+      </PageLayout>
     );
   }
 
   if (isError || !requirement) {
     return (
-      <CustomerLayout>
+      <PageLayout>
         <div className="max-w-2xl mx-auto text-center py-20 space-y-4">
           <div className="w-12 h-12 mx-auto rounded-full bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center">
             <BriefcaseBusiness className="w-5 h-5 text-neutral-400" />
@@ -234,12 +240,12 @@ export default function RequirementDetailsPage() {
 
           <Button
             variant="outline"
-            onClick={() => navigate('/customer/requirements')}
+            onClick={() => navigate(requirementsPath)}
           >
             Back to Requirements
           </Button>
         </div>
-      </CustomerLayout>
+      </PageLayout>
     );
   }
 
@@ -280,7 +286,7 @@ export default function RequirementDetailsPage() {
   )?.workerProfile;
 
   return (
-    <CustomerLayout>
+    <PageLayout>
       <div className="max-w-5xl mx-auto space-y-6 px-1 sm:px-0">
 
         {/* Back */}
@@ -925,7 +931,7 @@ export default function RequirementDetailsPage() {
         </Card>
 
       </div>
-    </CustomerLayout>
+    </PageLayout>
   );
 }
 
@@ -945,6 +951,7 @@ function CandidateCard({
   assigning: boolean;
   navigate: ReturnType<typeof useNavigate>;
 }) {
+  const { user } = useAuth();
   const worker = candidate.workerProfile;
 
   const skillNames = [...(worker?.skills ?? [])]
@@ -1136,7 +1143,7 @@ function CandidateCard({
         {/* Actions */}
         <div className="flex gap-2 flex-shrink-0">
 
-          {worker && (
+          {worker && user?.role !== 'PARTNER' && (
             <Button
               variant="outline"
               size="sm"

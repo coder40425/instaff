@@ -33,6 +33,8 @@ export default function LoginPage() {
         navigate('/worker');
       } else if (response.user.role === 'ADMIN') {
         navigate('/admin');
+      } else if (response.user.role === 'PARTNER') {
+        navigate('/partner');
       } else {
         navigate('/');
       }

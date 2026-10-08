@@ -25,6 +25,7 @@ const REQUIREMENT_STATUS_LABELS: Record<RequirementStatus, string> = {
   FILLED: 'Filled',
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
+  EXPIRED: 'Expired',
 };
 
 const REQUIREMENT_STATUS_STYLES: Record<RequirementStatus, string> = {
@@ -34,6 +35,7 @@ const REQUIREMENT_STATUS_STYLES: Record<RequirementStatus, string> = {
   FILLED: 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300',
   COMPLETED: 'bg-black dark:bg-white text-white dark:text-black',
   CANCELLED: 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300',
+  EXPIRED: 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400',
 };
 
 function StatusBadge({ status }: { status: RequirementStatus }) {

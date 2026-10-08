@@ -3,6 +3,8 @@ import { authMiddleware } from "../../middleware/authMiddleware";
 import { authorizeRoles } from "../../middleware/roleMiddleware";
 
 import {
+  pendingPartners, allPartners, approvePartnerHandler, rejectPartnerHandler,
+  suspendPartnerHandler, reactivatePartnerHandler,
   pendingWorkers, approveWorkerHandler, rejectWorkerHandler,
   suspendWorkerHandler, reactivateWorkerHandler,
   bookings, analytics,
@@ -15,6 +17,14 @@ import {
 const router = express.Router();
 
 router.use(authMiddleware, authorizeRoles("ADMIN"));
+
+// Partners
+router.get("/partners", allPartners);
+router.get("/partners/pending", pendingPartners);
+router.patch("/partners/:partnerProfileId/approve", approvePartnerHandler);
+router.patch("/partners/:partnerProfileId/reject", rejectPartnerHandler);
+router.patch("/partners/:partnerProfileId/suspend", suspendPartnerHandler);
+router.patch("/partners/:partnerProfileId/reactivate", reactivatePartnerHandler);
 
 // Workers
 router.get("/workers/pending", pendingWorkers);

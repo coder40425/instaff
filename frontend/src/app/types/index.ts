@@ -1,4 +1,4 @@
-export type Role = 'CUSTOMER' | 'WORKER' | 'ADMIN' | 'EMPLOYER';
+export type Role = 'CUSTOMER' | 'WORKER' | 'ADMIN' | 'EMPLOYER' | 'PARTNER';
 
 export type BookingStatus =
   | 'PENDING'
@@ -312,6 +312,7 @@ export interface RegisterRequest {
   phone: string;
   password: string;
   role: Role;
+  partnerType?: import('./partner').PartnerType;
 }
 
 export interface AuthResponse {

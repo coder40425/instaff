@@ -19,6 +19,7 @@ import type {
   CrmRequirementPipeline,
   CrmRequirementListItem,
 } from '../types';
+import type { AdminPartnerProfile } from '../types/partner';
 
 const API_BASE =
   ((import.meta as any).env?.VITE_API_URL as string) ||
@@ -273,6 +274,12 @@ export const complaintService = {
 
 export const adminService = {
   getAnalytics:      async () => { const r = await api.get('/admin/analytics');       return r.data.data; },
+  getPendingPartners: async (): Promise<AdminPartnerProfile[]> => { const r = await api.get('/admin/partners/pending'); return r.data.data; },
+  getAllPartners:    async (): Promise<AdminPartnerProfile[]> => { const r = await api.get('/admin/partners'); return r.data.data; },
+  approvePartner:    async (id: string) => { const r = await api.patch(`/admin/partners/${id}/approve`); return r.data.data; },
+  rejectPartner:     async (id: string) => { const r = await api.patch(`/admin/partners/${id}/reject`); return r.data.data; },
+  suspendPartner:    async (id: string) => { const r = await api.patch(`/admin/partners/${id}/suspend`); return r.data.data; },
+  reactivatePartner: async (id: string) => { const r = await api.patch(`/admin/partners/${id}/reactivate`); return r.data.data; },
   // Admin-only: sees pending/rejected workers awaiting verification.
   getPendingWorkers: async () => { const r = await api.get('/admin/workers/pending'); return r.data.data; },
   // IMPORTANT: these routes take the USER id, not the worker profile id. Do not change.

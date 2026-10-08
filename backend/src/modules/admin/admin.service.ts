@@ -1,5 +1,64 @@
 import prisma from "../../config/prisma";
 
+const partnerAdminSelect = {
+  id: true,
+  partnerType: true,
+  status: true,
+  workerLimit: true,
+  createdAt: true,
+  user: { select: { id: true, name: true } },
+} as const;
+
+export const getPendingPartners = () =>
+  prisma.partnerProfile.findMany({
+    where: { status: "PENDING" },
+    select: partnerAdminSelect,
+    orderBy: { createdAt: "asc" },
+  });
+
+export const getAllPartners = () =>
+  prisma.partnerProfile.findMany({
+    select: partnerAdminSelect,
+    orderBy: { createdAt: "desc" },
+  });
+
+const updatePartnerStatus = async (
+  partnerProfileId: string,
+  currentStatus: "PENDING" | "APPROVED" | "SUSPENDED",
+  nextStatus: "APPROVED" | "REJECTED" | "SUSPENDED"
+) => {
+  const updated = await prisma.partnerProfile.updateMany({
+    where: { id: partnerProfileId, status: currentStatus },
+    data: { status: nextStatus },
+  });
+
+  if (updated.count !== 1) {
+    const partner = await prisma.partnerProfile.findUnique({
+      where: { id: partnerProfileId },
+      select: { id: true, status: true },
+    });
+    if (!partner) throw new Error("Partner not found");
+    throw new Error(`Partner must be ${currentStatus.toLowerCase()} to change to ${nextStatus.toLowerCase()}`);
+  }
+
+  return prisma.partnerProfile.findUnique({
+    where: { id: partnerProfileId },
+    select: partnerAdminSelect,
+  });
+};
+
+export const approvePartner = (partnerProfileId: string) =>
+  updatePartnerStatus(partnerProfileId, "PENDING", "APPROVED");
+
+export const rejectPartner = (partnerProfileId: string) =>
+  updatePartnerStatus(partnerProfileId, "PENDING", "REJECTED");
+
+export const suspendPartner = (partnerProfileId: string) =>
+  updatePartnerStatus(partnerProfileId, "APPROVED", "SUSPENDED");
+
+export const reactivatePartner = (partnerProfileId: string) =>
+  updatePartnerStatus(partnerProfileId, "SUSPENDED", "APPROVED");
+
 export const getPendingWorkers = async () => {
   return prisma.workerProfile.findMany({
     where: { isVerified: false, rejectionReason: null },
