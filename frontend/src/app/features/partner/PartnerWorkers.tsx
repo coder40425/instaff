@@ -1,123 +1,312 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle2, MapPin, Search, UserRound, UsersRound } from 'lucide-react';
+import {
+  AlertCircle, CheckCircle2, MapPin, Search, SearchX, UserPlus, UserRound, UsersRound, X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import PartnerLayout from '../../layouts/PartnerLayout';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../../components/ui/alert-dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '../../components/ui/alert-dialog';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Card, CardContent } from '../../components/ui/card';
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
-import { workerService } from '../../services/api';
+import { categoryService, workerService } from '../../services/api';
 import { partnerService } from '../../services/partnerApi';
-import type { PublicWorkerProfile } from '../../types';
+import type { PublicWorkerProfile, WorkerDirectoryFilters } from '../../types';
 import { PartnerStatusBadge } from '../../components/ui/partner/PartnerStatusBadge';
-import { PartnerWorkerCard } from '../../components/ui/partner/PartnerWorkerCard';
+
+const PAGE_SIZE = 20;
+type Tab = 'discovery' | 'workforce';
+type RowMode = 'discover' | 'workforce';
+
+// Shared desktop column template so the header and every row line up.
+const ROW_GRID = 'xl:grid-cols-[minmax(0,2fr)_minmax(0,1.6fr)_5.5rem_minmax(0,1.3fr)_6.5rem_15rem]';
+const SELECT_CLASS =
+  'h-9 w-full rounded-md border border-neutral-200 bg-background px-2.5 text-sm text-foreground disabled:opacity-50 dark:border-neutral-700';
+
+const unique = (values: (string | undefined)[]) =>
+  [...new Set(values.filter((value): value is string => Boolean(value)))];
+
+const formatLabel = (value: string) =>
+  value.split('_').map((word) => word.charAt(0) + word.slice(1).toLowerCase()).join(' ');
+
+const locationOf = (worker: { city?: string | null; state?: string | null }) =>
+  [worker.city, worker.state].filter(Boolean).join(', ');
+
+const messageOf = (error: unknown) =>
+  (error as any)?.response?.data?.message || (error as Error | null)?.message;
 
 export default function PartnerWorkers() {
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState<Tab>('discovery');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [inviteInfoOpen, setInviteInfoOpen] = useState(false);
+  const [categoryId, setCategoryId] = useState('');
+  const [subCategoryId, setSubCategoryId] = useState('');
+  const [city, setCity] = useState('');
+  const [availability, setAvailability] = useState<'all' | 'available' | 'unavailable'>('all');
+  const [workforceSearch, setWorkforceSearch] = useState('');
+  const [discoveryShown, setDiscoveryShown] = useState(PAGE_SIZE);
+  const [workforceShown, setWorkforceShown] = useState(PAGE_SIZE);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
   const [workerToRemove, setWorkerToRemove] = useState<PublicWorkerProfile | null>(null);
+  const [inviteInfoOpen, setInviteInfoOpen] = useState(false);
 
   useEffect(() => {
-    const handle = setTimeout(() => setSearch(searchInput.trim()), 350);
-    return () => clearTimeout(handle);
+    const timer = setTimeout(() => setSearch(searchInput.trim()), 350);
+    return () => clearTimeout(timer);
   }, [searchInput]);
 
-  const profileQuery = useQuery({
-    queryKey: ['partner-profile'],
-    queryFn: partnerService.getProfile,
-  });
-  const approved = profileQuery.data?.status === 'APPROVED';
+  // Start from the first page whenever the result set changes.
+  useEffect(() => { setDiscoveryShown(PAGE_SIZE); }, [search, categoryId, subCategoryId, city, availability]);
+  useEffect(() => { setWorkforceShown(PAGE_SIZE); }, [workforceSearch]);
 
+  const profileQuery = useQuery({ queryKey: ['partner-profile'], queryFn: partnerService.getProfile });
+  const approved = profileQuery.data?.status === 'APPROVED';
+  const categoriesQuery = useQuery({
+    queryKey: ['categories', 'sequence'],
+    queryFn: () => categoryService.getAll('sequence'),
+    enabled: approved,
+  });
   const workersQuery = useQuery({
     queryKey: ['partner-workers'],
     queryFn: partnerService.getWorkers,
     enabled: approved,
   });
 
+  const filters: WorkerDirectoryFilters = {
+    sort: 'name',
+    ...(search && { search }),
+    ...(categoryId && { categoryId }),
+    ...(subCategoryId && { subCategoryId }),
+    ...(city.trim() && { city: city.trim() }),
+    ...(availability !== 'all' && { isAvailable: availability === 'available' }),
+  };
   const discoveryQuery = useQuery({
-    queryKey: ['partner-worker-discovery', search],
-    queryFn: () => workerService.getAll(search ? { search } : {}),
+    queryKey: ['partner-worker-discovery', filters],
+    queryFn: () => workerService.getAll(filters),
     enabled: approved,
   });
-
-  const addMutation = useMutation({
-    mutationFn: (selectedWorker: PublicWorkerProfile) => partnerService.associateWorker(selectedWorker.id),
-    onSuccess: async (_worker, selectedWorker) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['partner-workers'] }),
-        queryClient.invalidateQueries({ queryKey: ['partner-profile'] }),
-      ]);
-      toast.success(`${selectedWorker.user?.name || 'Worker'} added to your workforce`);
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Unable to add this worker');
-    },
+  const detailQuery = useQuery({
+    queryKey: ['partner-worker-detail', selectedWorkerId],
+    queryFn: () => workerService.getById(selectedWorkerId!),
+    enabled: !!selectedWorkerId,
+    retry: false,
   });
 
+  const refreshAssociationViews = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['partner-workers'] }),
+    queryClient.invalidateQueries({ queryKey: ['partner-profile'] }),
+    queryClient.invalidateQueries({ queryKey: ['partner-worker-discovery'] }),
+  ]);
+  const addMutation = useMutation({
+    mutationFn: (selectedWorker: PublicWorkerProfile) => partnerService.associateWorker(selectedWorker.id),
+    onSuccess: async (_result, selectedWorker) => {
+      await refreshAssociationViews();
+      toast.success((selectedWorker.user?.name || 'Worker') + ' added to your workforce');
+    },
+    onError: (error: any) => toast.error(messageOf(error) || 'Unable to add this worker'),
+  });
   const removeMutation = useMutation({
     mutationFn: (id: string) => partnerService.removeWorker(id),
     onSuccess: async () => {
       setWorkerToRemove(null);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['partner-workers'] }),
-        queryClient.invalidateQueries({ queryKey: ['partner-profile'] }),
-      ]);
-      toast.success('Worker removed from your Partner profile');
+      await refreshAssociationViews();
+      toast.success('Worker removed from your workforce. They can be found in Find Workers again.');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Unable to remove this worker');
-    },
+    onError: (error: any) => toast.error(messageOf(error) || 'Unable to remove this worker'),
   });
+
+  // ---- Derived data -------------------------------------------------------
+  const categories = categoriesQuery.data ?? [];
+  const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+  const subCategoriesOf = (id: string) =>
+    [...(categories.find((category) => category.id === id)?.subCategories ?? [])].sort(byName);
+  const selectedCategoryName = categories.find((category) => category.id === categoryId)?.name;
+  const selectedWorkTypeName = categories
+    .flatMap((category) => category.subCategories ?? [])
+    .find((subCategory) => subCategory.id === subCategoryId)?.name;
 
   const workerLimit = profileQuery.data?.workerLimit ?? null;
   const workerCount = profileQuery.data?.workerCount ?? 0;
   const limitReached = workerLimit !== null && workerCount >= workerLimit;
-  const formError = (profileQuery.error as any)?.response?.data?.message
-    || (workersQuery.error as any)?.response?.data?.message
-    || (discoveryQuery.error as any)?.response?.data?.message
-    || (profileQuery.error as Error | null)?.message
-    || (workersQuery.error as Error | null)?.message
-    || (discoveryQuery.error as Error | null)?.message;
-  const associatedWorkerIds = new Set((workersQuery.data ?? []).map((worker) => worker.id));
+  const usage = workerLimit ? Math.min(100, Math.round((workerCount / workerLimit) * 100)) : 0;
+  const usageColor = limitReached ? 'bg-red-500' : usage >= 90 ? 'bg-amber-500' : 'bg-primary';
+
+  const associatedWorkers = workersQuery.data ?? [];
+  const associatedIds = new Set(associatedWorkers.map((worker) => worker.id));
+  const workforceTerm = workforceSearch.trim().toLowerCase();
+  const matchingWorkers = associatedWorkers.filter((worker) => {
+    if (!workforceTerm) return true;
+    const text = [
+      worker.user?.name, worker.city, worker.state,
+      ...worker.skills.map((skill) => skill.subCategory.name),
+      ...worker.skills.map((skill) => skill.subCategory.category?.name),
+    ].filter(Boolean).join(' ').toLowerCase();
+    return text.includes(workforceTerm);
+  });
+
+  // Discovery = verified workers NOT already associated. Category / work type are also
+  // matched client-side as a safety net so the dropdowns always narrow the list.
+  const discoveryWorkers = (discoveryQuery.data ?? []).filter((worker) => {
+    if (associatedIds.has(worker.id)) return false;
+    if (selectedWorkTypeName) return worker.skills.some((skill) => skill.subCategory.name === selectedWorkTypeName);
+    if (selectedCategoryName) return worker.skills.some((skill) => skill.subCategory.category?.name === selectedCategoryName);
+    return true;
+  });
+  const shownDiscovery = discoveryWorkers.slice(0, discoveryShown);
+  const shownWorkforce = matchingWorkers.slice(0, workforceShown);
+
+  const detailWorker = detailQuery.data ?? null;
+  const detailCategories = detailWorker ? unique(detailWorker.skills.map((skill) => skill.subCategory.category?.name)) : [];
+  const detailWorkTypes = detailWorker ? unique(detailWorker.skills.map((skill) => skill.subCategory.name)) : [];
+  const detailAssociated = !!detailWorker && associatedIds.has(detailWorker.id);
+  const hasFilters = !!searchInput.trim() || !!categoryId || !!subCategoryId || !!city.trim() || availability !== 'all';
+
+  const clearFilters = () => {
+    setSearchInput(''); setSearch(''); setCategoryId(''); setSubCategoryId(''); setCity(''); setAvailability('all');
+  };
+  const onCategoryChange = (next: string) => {
+    setCategoryId(next);
+    if (next && subCategoryId && !subCategoriesOf(next).some((subCategory) => subCategory.id === subCategoryId)) {
+      setSubCategoryId('');
+    }
+  };
+
+  // ---- Small render helpers (file-local, not separate components) ----------
+  const renderAvatar = (url: string | undefined | null, size: string, icon: string) =>
+    url
+      ? <img src={url} alt="" className={`${size} shrink-0 rounded-full object-cover`} />
+      : <div className={`${size} flex shrink-0 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800`}><UserRound className={`${icon} text-neutral-500`} /></div>;
+
+  const renderSkeleton = () => (
+    <ul className="divide-y divide-neutral-200 dark:divide-neutral-800" aria-busy="true" aria-label="Loading workers">
+      {[0, 1, 2, 3, 4].map((item) => (
+        <li key={item} className="flex animate-pulse items-center gap-3 px-4 py-4">
+          <div className="h-10 w-10 rounded-full bg-neutral-100 dark:bg-neutral-800" />
+          <div className="flex-1 space-y-2"><div className="h-3 w-40 rounded bg-neutral-100 dark:bg-neutral-800" /><div className="h-3 w-64 max-w-full rounded bg-neutral-100 dark:bg-neutral-800" /></div>
+        </li>
+      ))}
+    </ul>
+  );
+
+  const renderRow = (worker: PublicWorkerProfile, mode: RowMode) => {
+    const groups = unique(worker.skills.map((skill) => skill.subCategory.category?.name));
+    const workTypes = unique(worker.skills.map((skill) => skill.subCategory.name));
+    const location = locationOf(worker);
+    const adding = addMutation.isPending && addMutation.variables?.id === worker.id;
+    const workTypeText = workTypes.slice(0, 2).join(', ') + (workTypes.length > 2 ? ' +' + (workTypes.length - 2) : '');
+    return (
+      <li key={worker.id} className={'grid gap-x-4 gap-y-3 px-4 py-3.5 transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-900/50 xl:items-center ' + ROW_GRID}>
+        <div className="flex min-w-0 items-center gap-3">
+          {renderAvatar(worker.profilePhotoUrl, 'h-10 w-10', 'h-4 w-4')}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p className="truncate text-sm font-semibold">{worker.user?.name || 'NearPassway worker'}</p>
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" aria-label="Verified" />
+            </div>
+            <p className="truncate text-xs text-neutral-500 dark:text-neutral-400 xl:hidden">{workTypeText || groups[0] || 'No public work type listed'}</p>
+          </div>
+        </div>
+
+        {/* On mobile these sit in one wrapped meta line; on xl they become real columns. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400 xl:contents xl:text-sm">
+          <div className="hidden min-w-0 xl:block">
+            <p className="truncate font-medium text-foreground">{workTypeText || 'No public work type listed'}</p>
+            {groups[0] && <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">{groups.join(', ')}</p>}
+          </div>
+          <span>{worker.experience} {worker.experience === 1 ? 'yr' : 'yrs'}<span className="xl:hidden"> experience</span></span>
+          <span className="inline-flex min-w-0 items-center gap-1 xl:truncate">
+            {location ? <><MapPin className="h-3 w-3 shrink-0 xl:hidden" /><span className="truncate">{location}</span></> : <span className="text-neutral-400">—</span>}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className={'h-1.5 w-1.5 rounded-full ' + (worker.isAvailable ? 'bg-green-500' : 'bg-neutral-400')} />
+            {worker.isAvailable ? 'Available' : 'Unavailable'}
+          </span>
+        </div>
+
+        <div className="flex gap-2 xl:justify-end">
+          <Button variant="outline" size="sm" className="flex-1 xl:flex-none" onClick={() => setSelectedWorkerId(worker.id)}>View Profile</Button>
+          {mode === 'discover' ? (
+            <Button size="sm" className="flex-1 xl:flex-none" disabled={limitReached || addMutation.isPending} onClick={() => addMutation.mutate(worker)}>
+              {adding ? 'Adding…' : limitReached ? 'Limit reached' : 'Add to workforce'}
+            </Button>
+          ) : (
+            <Button variant="ghost" size="sm" className="flex-1 text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/30 xl:flex-none" onClick={() => setWorkerToRemove(worker)}>Remove</Button>
+          )}
+        </div>
+      </li>
+    );
+  };
+
+  const renderColumnHeader = () => (
+    <div className={'hidden gap-x-4 border-b border-neutral-200 bg-neutral-50/70 px-4 py-2 text-xs font-medium text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/40 xl:grid ' + ROW_GRID}>
+      <span>Worker</span><span>Work type</span><span>Experience</span><span>Location</span><span>Status</span><span className="text-right">Actions</span>
+    </div>
+  );
+
+  const renderShowMore = (shown: number, total: number, onMore: () => void) => (
+    <div className="flex flex-col items-center gap-2 border-t border-neutral-200 px-4 py-3 text-xs text-neutral-500 dark:border-neutral-800 sm:flex-row sm:justify-between">
+      <span>Showing {Math.min(shown, total)} of {total}</span>
+      {shown < total && <Button variant="outline" size="sm" onClick={onMore}>Show {Math.min(PAGE_SIZE, total - shown)} more</Button>}
+    </div>
+  );
+
+  const renderError = (message: string, retry: () => void) => (
+    <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+      <AlertCircle className="h-5 w-5 text-red-600" />
+      <p className="text-sm text-red-600 dark:text-red-400">{message}</p>
+      <Button variant="outline" size="sm" onClick={retry}>Retry</Button>
+    </div>
+  );
+
+  const profileError = messageOf(profileQuery.error);
+  const discoveryLoading = discoveryQuery.isLoading || (workersQuery.isLoading && !workersQuery.isError);
 
   return (
     <PartnerLayout>
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mx-auto max-w-7xl space-y-5">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">My workers</h1>
-            <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-              Manage workers associated with your Partner profile.
-            </p>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">My Workers</h1>
+            <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">Find verified NearPassway workers and manage the ones in your workforce.</p>
           </div>
-          {profileQuery.data && (
-            <div className="flex items-center gap-2 text-sm">
-              <UsersRound className="h-4 w-4 text-neutral-500" />
-              <span className="font-semibold">{workerCount}</span>
-              <span className="text-neutral-500">/ {workerLimit ?? 'Unlimited'} workers</span>
+          {profileQuery.data && approved && (
+            <div className="w-full sm:w-56" aria-label="Workforce capacity">
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="text-neutral-500">Workforce</span>
+                <span><span className="text-xl font-bold tabular-nums">{workerCount}</span><span className="text-neutral-500"> / {workerLimit ?? 'Unlimited'}</span></span>
+              </div>
+              {workerLimit !== null && (
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800" role="progressbar" aria-valuenow={workerCount} aria-valuemin={0} aria-valuemax={workerLimit}>
+                  <div className={'h-full rounded-full transition-all ' + usageColor} style={{ width: usage + '%' }} />
+                </div>
+              )}
             </div>
           )}
-        </div>
+        </header>
 
         {profileQuery.isLoading ? (
-          <Card><CardContent className="py-10 text-center text-neutral-500">Loading Partner profile…</CardContent></Card>
+          <Card><CardContent className="py-10 text-center text-sm text-neutral-500">Loading Partner profile…</CardContent></Card>
         ) : profileQuery.isError || !profileQuery.data ? (
           <Card className="border-red-200 dark:border-red-900">
-            <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
+            <CardContent className="flex flex-col items-center gap-4 py-8 text-center">
               <AlertCircle className="h-6 w-6 text-red-600" />
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">{formError || 'Unable to load your Partner profile.'}</p>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">{profileError || 'Unable to load your Partner profile.'}</p>
               <Button variant="outline" onClick={() => profileQuery.refetch()}>Retry</Button>
             </CardContent>
           </Card>
-        ) : profileQuery.data.status !== 'APPROVED' ? (
+        ) : !approved ? (
           <Card className="border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20">
             <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
-              <AlertCircle className="h-5 w-5 flex-shrink-0 text-amber-700 dark:text-amber-300" />
-              <div className="flex-1">
+              <AlertCircle className="h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" />
+              <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-semibold">Worker management is unavailable until approval.</p>
                   <PartnerStatusBadge status={profileQuery.data.status} />
@@ -128,182 +317,213 @@ export default function PartnerWorkers() {
           </Card>
         ) : (
           <>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Find NearPassway workers</CardTitle>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                  Browse verified workers and add them to your workforce. Workers remain members of NearPassway; this only creates an association.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-                  <Input
-                    id="workerSearch"
-                    value={searchInput}
-                    onChange={(event) => setSearchInput(event.target.value)}
-                    placeholder="Search by name, city, category or work type"
-                    className="pl-9"
-                    autoComplete="off"
-                    disabled={addMutation.isPending}
-                  />
-                </div>
-                {limitReached && (
-                  <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
-                    Your worker limit has been reached. Remove an association before adding another worker.
-                  </p>
-                )}
+            {/* Primary navigation: one workspace, two clearly separated views */}
+            <div className="flex items-center justify-between gap-3 border-b border-neutral-200 dark:border-neutral-800">
+              <div className="-mb-px flex" role="tablist" aria-label="Partner workers">
+                {([
+                  { id: 'discovery', label: 'Find Workers', icon: Search, count: null },
+                  { id: 'workforce', label: 'My Workforce', icon: UsersRound, count: workerCount },
+                ] as const).map(({ id, label, icon: Icon, count }) => (
+                  <button
+                    key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+                    className={'inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ' + (tab === id ? 'border-primary text-foreground' : 'border-transparent text-neutral-500 hover:text-foreground')}
+                  >
+                    <Icon className="h-4 w-4" />{label}
+                    {count !== null && <Badge variant="secondary" className="h-5 px-1.5 text-[11px] tabular-nums">{count}</Badge>}
+                  </button>
+                ))}
+              </div>
+              <Button variant="outline" size="sm" className="mb-1.5 shrink-0" onClick={() => setInviteInfoOpen(true)}>
+                <UserPlus className="mr-1.5 h-4 w-4" /><span className="hidden sm:inline">Invite a new worker</span><span className="sm:hidden">Invite</span>
+              </Button>
+            </div>
 
-                <div className="mt-5">
-                  {discoveryQuery.isLoading ? (
-                    <p className="py-8 text-center text-sm text-neutral-500">Searching verified workers…</p>
-                  ) : discoveryQuery.isError ? (
-                    <div className="flex flex-col items-center gap-3 py-8 text-center">
-                      <p className="text-sm text-red-600 dark:text-red-400">{formError || 'Unable to find workers.'}</p>
-                      <Button variant="outline" size="sm" onClick={() => discoveryQuery.refetch()}>Retry</Button>
-                    </div>
-                  ) : !discoveryQuery.data?.length ? (
-                    <p className="py-8 text-center text-sm text-neutral-500">
-                      {search ? 'No verified workers found. Try another search.' : 'No verified workers are available right now.'}
-                    </p>
-                  ) : (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {discoveryQuery.data.map((worker) => {
-                        const alreadyAssociated = associatedWorkerIds.has(worker.id);
-                        const categories = [...new Set(worker.skills.flatMap((skill) => skill.subCategory.category?.name ? [skill.subCategory.category.name] : []))];
-                        const workTypes = [...new Set(worker.skills.flatMap((skill) => skill.subCategory.name ? [skill.subCategory.name] : []))];
-                        const isAddingThisWorker = addMutation.isPending && addMutation.variables?.id === worker.id;
-
-                        return (
-                          <Card key={worker.id} className="min-w-0">
-                            <CardContent className="flex h-full flex-col gap-4 p-4 sm:p-5">
-                              <div className="flex min-w-0 items-start gap-3">
-                                {worker.profilePhotoUrl ? (
-                                  <img src={worker.profilePhotoUrl} alt="" className="h-12 w-12 flex-shrink-0 rounded-full object-cover" />
-                                ) : (
-                                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800">
-                                    <UserRound className="h-5 w-5 text-neutral-500" />
-                                  </div>
-                                )}
-                                <div className="min-w-0 flex-1">
-                                  <p className="break-words font-semibold">{worker.user?.name || 'NearPassway worker'}</p>
-                                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
-                                    <span>{worker.experience} yrs experience</span>
-                                    {worker.gender && <span>{worker.gender.toLowerCase()}</span>}
-                                    {worker.education && <span>{worker.education}</span>}
-                                  </div>
-                                </div>
-                                {worker.isVerified && (
-                                  <Badge variant="outline" className="shrink-0 border-green-200 text-green-700 dark:border-green-900 dark:text-green-300">
-                                    <CheckCircle2 className="mr-1 h-3 w-3" />Verified
-                                  </Badge>
-                                )}
-                              </div>
-
-                              <div className="flex flex-wrap gap-1.5">
-                                {categories.map((category) => (
-                                  <Badge key={'category-' + worker.id + '-' + category} variant="outline">{category}</Badge>
-                                ))}
-                                {workTypes.map((workType) => (
-                                  <Badge key={'work-' + worker.id + '-' + workType} variant="secondary" className="max-w-full break-words font-normal">{workType}</Badge>
-                                ))}
-                                {!workTypes.length && <span className="text-xs text-neutral-500">No public work types listed</span>}
-                              </div>
-
-                              {(worker.city || worker.state) && (
-                                <p className="flex items-center gap-1.5 break-words text-sm text-neutral-600 dark:text-neutral-400">
-                                  <MapPin className="h-4 w-4 flex-shrink-0" />
-                                  {[worker.city, worker.state].filter(Boolean).join(', ')}
-                                </p>
-                              )}
-
-                              <div className="mt-auto flex flex-col gap-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-                                <Badge
-                                  variant="outline"
-                                  className={worker.isAvailable
-                                    ? 'w-fit border-green-200 text-green-700 dark:border-green-900 dark:text-green-300'
-                                    : 'w-fit text-neutral-500'}
-                                >
-                                  {worker.isAvailable ? 'Available' : 'Unavailable'}
-                                </Badge>
-                                <Button
-                                  className="w-full"
-                                  variant={alreadyAssociated ? 'outline' : 'default'}
-                                  disabled={alreadyAssociated || limitReached || addMutation.isPending}
-                                  onClick={() => addMutation.mutate(worker)}
-                                >
-                                  {alreadyAssociated
-                                    ? 'Already in your workforce'
-                                    : isAddingThisWorker
-                                      ? 'Adding…'
-                                      : limitReached
-                                        ? 'Worker limit reached'
-                                        : 'Add to my workforce'}
-                                </Button>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
+            {tab === 'discovery' ? (
+              <section className="space-y-4" aria-label="Find workers">
+                <div className="space-y-3 rounded-xl border border-neutral-200 p-3 dark:border-neutral-800 sm:p-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                    <Input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search by name, work type or city" className="pl-9" autoComplete="off" aria-label="Search workers" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                    <select aria-label="Category" value={categoryId} onChange={(event) => onCategoryChange(event.target.value)} className={SELECT_CLASS}>
+                      <option value="">All categories</option>
+                      {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                    </select>
+                    <select aria-label="Work type" value={subCategoryId} onChange={(event) => setSubCategoryId(event.target.value)} className={SELECT_CLASS}>
+                      <option value="">All work types</option>
+                      {categoryId
+                        ? subCategoriesOf(categoryId).map((subCategory) => <option key={subCategory.id} value={subCategory.id}>{subCategory.name}</option>)
+                        : categories.filter((category) => category.subCategories?.length).map((category) => (
+                          <optgroup key={category.id} label={category.name}>
+                            {subCategoriesOf(category.id).map((subCategory) => <option key={subCategory.id} value={subCategory.id}>{subCategory.name}</option>)}
+                          </optgroup>
+                        ))}
+                    </select>
+                    <Input aria-label="Service location" value={city} onChange={(event) => setCity(event.target.value)} placeholder="Location (city)" className="h-9" />
+                    <select aria-label="Availability" value={availability} onChange={(event) => setAvailability(event.target.value as 'all' | 'available' | 'unavailable')} className={SELECT_CLASS}>
+                      <option value="all">Any availability</option>
+                      <option value="available">Available</option>
+                      <option value="unavailable">Unavailable</option>
+                    </select>
+                  </div>
+                  {(hasFilters || categoriesQuery.isError) && (
+                    <div className="flex items-center justify-between gap-2 text-xs text-neutral-500">
+                      <span>{categoriesQuery.isError ? 'Category filters are temporarily unavailable.' : ''}</span>
+                      {hasFilters && <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={clearFilters}><X className="mr-1 h-3 w-3" />Clear filters</Button>}
                     </div>
                   )}
                 </div>
 
-                <div className="mt-6 flex flex-col gap-2 border-t border-neutral-200 pt-4 dark:border-neutral-800 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">Can&apos;t find your worker?</p>
-                  <Button variant="outline" onClick={() => setInviteInfoOpen(true)}>Invite a new worker</Button>
-                </div>
-              </CardContent>
-            </Card>
+                {limitReached && (
+                  <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm dark:border-amber-900 dark:bg-amber-950/20">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+                    You have reached your worker limit. Remove a worker to add someone new.
+                  </div>
+                )}
 
-            <div>
-              <h2 className="mb-3 text-lg font-semibold">Associated workforce</h2>
-              {workersQuery.isLoading ? (
-                <Card><CardContent className="py-10 text-center text-neutral-500">Loading workers…</CardContent></Card>
-              ) : workersQuery.isError ? (
-                <Card className="border-red-200 dark:border-red-900">
-                  <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
-                    <AlertCircle className="h-6 w-6 text-red-600" />
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400">{formError || 'Unable to load associated workers.'}</p>
-                    <Button variant="outline" onClick={() => workersQuery.refetch()}>Retry</Button>
-                  </CardContent>
-                </Card>
-              ) : !workersQuery.data?.length ? (
-                <Card><CardContent className="py-12 text-center">
-                  <UsersRound className="mx-auto h-8 w-8 text-neutral-300 dark:text-neutral-700" />
-                  <p className="mt-3 font-medium">No workers associated yet</p>
-                  <p className="mt-1 text-sm text-neutral-500">Search for a verified NearPassway worker to add to your workforce.</p>
-                </CardContent></Card>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {workersQuery.data.map((worker) => (
-                    <PartnerWorkerCard key={worker.id} worker={worker} onRemove={() => setWorkerToRemove(worker)} />
-                  ))}
+                <div className="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800">
+                  {discoveryLoading ? renderSkeleton()
+                    : discoveryQuery.isError ? renderError(messageOf(discoveryQuery.error) || 'Unable to find workers.', () => discoveryQuery.refetch())
+                    : discoveryWorkers.length === 0 ? (
+                      <div className="flex flex-col items-center gap-2 px-4 py-14 text-center">
+                        <SearchX className="h-6 w-6 text-neutral-400" />
+                        <p className="text-sm font-medium">{hasFilters ? 'No workers match these filters' : 'No more workers to add right now'}</p>
+                        <p className="max-w-sm text-xs text-neutral-500">{hasFilters ? 'Try a broader search or clear the filters.' : 'Every verified worker is already in your workforce, or none are available yet.'}</p>
+                        <div className="mt-2 flex gap-2">
+                          {hasFilters && <Button variant="outline" size="sm" onClick={clearFilters}>Clear filters</Button>}
+                          <Button variant="ghost" size="sm" onClick={() => setInviteInfoOpen(true)}>Invite a new worker</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {renderColumnHeader()}
+                        <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">{shownDiscovery.map((worker) => renderRow(worker, 'discover'))}</ul>
+                        {renderShowMore(discoveryShown, discoveryWorkers.length, () => setDiscoveryShown((value) => value + PAGE_SIZE))}
+                      </>
+                    )}
                 </div>
-              )}
-            </div>
+              </section>
+            ) : (
+              <section className="space-y-4" aria-label="My workforce">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">My Workforce</h2>
+                    <p className="text-sm text-neutral-500">{associatedWorkers.length} associated worker{associatedWorkers.length === 1 ? '' : 's'}</p>
+                  </div>
+                  <div className="relative w-full sm:w-80">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                    <Input value={workforceSearch} onChange={(event) => setWorkforceSearch(event.target.value)} placeholder="Search your workforce" className="pl-9" aria-label="Search associated workers" />
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800">
+                  {workersQuery.isLoading ? renderSkeleton()
+                    : workersQuery.isError ? renderError(messageOf(workersQuery.error) || 'Unable to load your workforce.', () => workersQuery.refetch())
+                    : matchingWorkers.length === 0 ? (
+                      <div className="flex flex-col items-center gap-2 px-4 py-14 text-center">
+                        <UsersRound className="h-6 w-6 text-neutral-400" />
+                        <p className="text-sm font-medium">{associatedWorkers.length ? 'No matching workers' : 'No workers in your workforce yet'}</p>
+                        <p className="max-w-sm text-xs text-neutral-500">{associatedWorkers.length ? 'Try a different name, work type or location.' : 'Find verified NearPassway workers and add them to start building your workforce.'}</p>
+                        {!associatedWorkers.length && <Button size="sm" className="mt-2" onClick={() => setTab('discovery')}>Find Workers</Button>}
+                      </div>
+                    ) : (
+                      <>
+                        {renderColumnHeader()}
+                        <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">{shownWorkforce.map((worker) => renderRow(worker, 'workforce'))}</ul>
+                        {renderShowMore(workforceShown, matchingWorkers.length, () => setWorkforceShown((value) => value + PAGE_SIZE))}
+                      </>
+                    )}
+                </div>
+              </section>
+            )}
           </>
         )}
 
+        {/* Professional profile (public fields only: no contact, address, ID, DOB, salary, family info) */}
+        <Dialog open={!!selectedWorkerId} onOpenChange={(open) => { if (!open) setSelectedWorkerId(null); }}>
+          <DialogContent className="max-h-[90vh] gap-0 overflow-y-auto p-0 sm:max-w-2xl">
+            <DialogHeader className="sr-only"><DialogTitle>{detailWorker?.user?.name || 'Worker profile'}</DialogTitle><DialogDescription>Public professional information from the NearPassway worker profile.</DialogDescription></DialogHeader>
+            {detailQuery.isLoading ? <p className="py-16 text-center text-sm text-neutral-500">Loading worker profile…</p> : detailQuery.isError || !detailWorker ? (
+              <p className="py-16 text-center text-sm text-neutral-500">This verified worker profile is no longer available.</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-4 border-b border-neutral-200 p-5 pr-12 dark:border-neutral-800 sm:p-6 sm:pr-14">
+                  {renderAvatar(detailWorker.profilePhotoUrl, 'h-16 w-16 sm:h-20 sm:w-20', 'h-7 w-7')}
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="break-words text-xl font-semibold">{detailWorker.user?.name || 'NearPassway worker'}</h2>
+                      <Badge variant="outline" className="border-green-200 text-green-700 dark:border-green-900 dark:text-green-300"><CheckCircle2 className="mr-1 h-3 w-3" />Verified</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
+                      {[detailWorkTypes[0], detailWorker.experience + ' ' + (detailWorker.experience === 1 ? 'year' : 'years') + ' experience'].filter(Boolean).join(' · ')}
+                    </p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-neutral-500">
+                      {locationOf(detailWorker) && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{locationOf(detailWorker)}</span>}
+                      <span className="inline-flex items-center gap-1.5"><span className={'h-1.5 w-1.5 rounded-full ' + (detailWorker.isAvailable ? 'bg-green-500' : 'bg-neutral-400')} />{detailWorker.isAvailable ? 'Available' : 'Unavailable'}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-6 p-5 sm:p-6">
+                  <section>
+                    <h3 className="mb-2 text-sm font-semibold">Skills</h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {detailWorkTypes.map((name) => <Badge key={'type-' + name} variant="secondary">{name}</Badge>)}
+                      {detailCategories.map((name) => <Badge key={'cat-' + name} variant="outline">{name}</Badge>)}
+                      {!detailWorkTypes.length && <span className="text-sm text-neutral-500">No public work types listed</span>}
+                    </div>
+                  </section>
+
+                  {detailWorker.previousCompanies && <section><h3 className="mb-1.5 text-sm font-semibold">Experience</h3><p className="whitespace-pre-wrap text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">{detailWorker.previousCompanies}</p></section>}
+                  {(detailWorker.education || detailWorker.certifications) && (
+                    <section>
+                      <h3 className="mb-1.5 text-sm font-semibold">Education & qualification</h3>
+                      {detailWorker.education && <p className="text-sm text-neutral-600 dark:text-neutral-300">{formatLabel(detailWorker.education)}</p>}
+                      {detailWorker.certifications && <p className="mt-1 whitespace-pre-wrap text-sm text-neutral-600 dark:text-neutral-300">{detailWorker.certifications}</p>}
+                    </section>
+                  )}
+
+                  <section>
+                    <h3 className="mb-2 text-sm font-semibold">Availability & service area</h3>
+                    <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                      {locationOf(detailWorker) && <div><dt className="text-xs text-neutral-500">Service area</dt><dd className="text-sm font-medium">{locationOf(detailWorker)}</dd></div>}
+                      <div><dt className="text-xs text-neutral-500">Status</dt><dd className="text-sm font-medium">{detailWorker.isAvailable ? 'Available' : 'Unavailable'}</dd></div>
+                      {detailWorker.gender && <div><dt className="text-xs text-neutral-500">Gender</dt><dd className="text-sm font-medium">{formatLabel(detailWorker.gender)}</dd></div>}
+                      {detailWorker.rating > 0 && <div><dt className="text-xs text-neutral-500">Rating</dt><dd className="text-sm font-medium">{detailWorker.rating.toFixed(1)} ({detailWorker.totalReviews} reviews)</dd></div>}
+                      {!!detailWorker.languagesKnown?.length && <div><dt className="text-xs text-neutral-500">Languages</dt><dd className="text-sm font-medium">{detailWorker.languagesKnown.join(', ')}</dd></div>}
+                      {!!detailWorker.employmentTypes?.length && <div><dt className="text-xs text-neutral-500">Employment types</dt><dd className="text-sm font-medium">{detailWorker.employmentTypes.map(formatLabel).join(', ')}</dd></div>}
+                      {detailWorker.workMode && <div><dt className="text-xs text-neutral-500">Work mode</dt><dd className="text-sm font-medium">{formatLabel(detailWorker.workMode)}</dd></div>}
+                      {detailWorker.workGeography && <div><dt className="text-xs text-neutral-500">Work geography</dt><dd className="text-sm font-medium">{formatLabel(detailWorker.workGeography)}</dd></div>}
+                      {detailWorker.availableTimings && <div><dt className="text-xs text-neutral-500">Available timings</dt><dd className="text-sm font-medium">{detailWorker.availableTimings}</dd></div>}
+                      {detailWorker.preferredWorkingRadius !== undefined && <div><dt className="text-xs text-neutral-500">Preferred working radius</dt><dd className="text-sm font-medium">{detailWorker.preferredWorkingRadius} km</dd></div>}
+                      {detailWorker.canRelocate && <div><dt className="text-xs text-neutral-500">Relocation</dt><dd className="text-sm font-medium">Can relocate</dd></div>}
+                    </dl>
+                  </section>
+                </div>
+
+                <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t border-neutral-200 bg-background p-4 dark:border-neutral-800 sm:flex-row sm:justify-end sm:px-6">
+                  <Button variant="outline" onClick={() => setSelectedWorkerId(null)}>Close</Button>
+                  {detailAssociated ? (
+                    <Button variant="outline" className="text-red-600 hover:text-red-700 dark:text-red-400" onClick={() => { setSelectedWorkerId(null); setWorkerToRemove(detailWorker); }}>Remove from workforce</Button>
+                  ) : (
+                    <Button disabled={limitReached || addMutation.isPending} onClick={() => addMutation.mutate(detailWorker)}>
+                      {addMutation.isPending && addMutation.variables?.id === detailWorker.id ? 'Adding…' : limitReached ? 'Limit reached' : 'Add to workforce'}
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+
         <AlertDialog open={!!workerToRemove} onOpenChange={(open) => { if (!open) setWorkerToRemove(null); }}>
           <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Remove this worker?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This removes the association with {workerToRemove?.user?.name || 'this worker'}. Their NearPassway worker account remains unchanged.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
+            <AlertDialogHeader><AlertDialogTitle>Remove this worker?</AlertDialogTitle><AlertDialogDescription>This removes {workerToRemove?.user?.name || 'this worker'} from your workforce. Their NearPassway worker account stays unchanged, and you can add them again from Find Workers.</AlertDialogDescription></AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={removeMutation.isPending}>Keep worker</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={removeMutation.isPending}
-                onClick={(event) => {
-                  event.preventDefault();
-                  if (workerToRemove) removeMutation.mutate(workerToRemove.id);
-                }}
-                className="bg-red-600 text-white hover:bg-red-700"
-              >
-                {removeMutation.isPending ? 'Removing…' : 'Remove association'}
+              <AlertDialogAction disabled={removeMutation.isPending} onClick={(event) => { event.preventDefault(); if (workerToRemove) removeMutation.mutate(workerToRemove.id); }} className="bg-red-600 text-white hover:bg-red-700">
+                {removeMutation.isPending ? 'Removing…' : 'Remove from workforce'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -311,15 +531,8 @@ export default function PartnerWorkers() {
 
         <AlertDialog open={inviteInfoOpen} onOpenChange={setInviteInfoOpen}>
           <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Worker invitations are not active yet</AlertDialogTitle>
-              <AlertDialogDescription>
-                The worker invitation flow will be available here after it is finalized. No invitation will be sent or recorded at this time.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogAction onClick={() => setInviteInfoOpen(false)}>Got it</AlertDialogAction>
-            </AlertDialogFooter>
+            <AlertDialogHeader><AlertDialogTitle>Worker invitations are coming soon</AlertDialogTitle><AlertDialogDescription>You'll be able to invite workers who aren't on NearPassway yet from here. No invitation will be sent or recorded for now.</AlertDialogDescription></AlertDialogHeader>
+            <AlertDialogFooter><AlertDialogAction onClick={() => setInviteInfoOpen(false)}>Got it</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
       </div>
