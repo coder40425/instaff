@@ -12,6 +12,7 @@ import type {
   PublicWorkerProfile,
   WorkerRequirementOffer,
   WorkerRequirementOfferActionResult,
+  WorkerPartnerAssociation,
   // CRM
   CrmOverview,
   CrmRequirementFilters,
@@ -183,6 +184,11 @@ export const workerService = {
 
   getRequirementOffers: async (): Promise<WorkerRequirementOffer[]> => {
     const response = await api.get('/worker/requirements/offers');
+    return response.data.data;
+  },
+
+  getPartnerAssociation: async (): Promise<WorkerPartnerAssociation | null> => {
+    const response = await api.get('/worker/partner');
     return response.data.data;
   },
 

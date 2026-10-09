@@ -14,6 +14,7 @@ addWorkerLocation,
 deleteWorkerLocation,
   setPrimaryWorkerLocation,
   getWorkerRequirementOffers,
+  getWorkerPartnerAssociation,
   acceptWorkerRequirementOffer,
   rejectWorkerRequirementOffer,
 } from "./worker.service";
@@ -230,6 +231,21 @@ export const getWorkerRequirementOffersHandler = async (
     );
 
     res.json({ success: true, data: offers });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const getWorkerPartnerAssociationHandler = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const partner = await getWorkerPartnerAssociation(
+      req.user!.userId
+    );
+
+    res.json({ success: true, data: partner });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

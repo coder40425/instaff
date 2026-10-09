@@ -368,10 +368,15 @@ const requirementOfferSelect = {
   requirementId: true,
   status: true,
   offeredAt: true,
+  acceptedAt: true,
+  assignedAt: true,
+  rejectedAt: true,
   createdAt: true,
   requirement: {
     select: {
       id: true,
+      source: true,
+      status: true,
       city: true,
       state: true,
       shiftTiming: true,
@@ -394,6 +399,21 @@ const requirementOfferSelect = {
           name: true,
         },
       },
+      createdBy: {
+        select: {
+          partnerProfile: {
+            select: {
+              partnerType: true,
+              status: true,
+              user: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
   },
 } as const;
@@ -408,16 +428,70 @@ export const getWorkerRequirementOffers = async (
 
   if (!profile) throw new Error("Worker profile not found");
 
-  return prisma.requirementCandidate.findMany({
+  const candidates = await prisma.requirementCandidate.findMany({
     where: {
       workerProfileId: profile.id,
-      status: "OFFERED",
+      status: {
+        in: ["OFFERED", "ASSIGNED", "REJECTED", "EXPIRED"],
+      },
     },
     select: requirementOfferSelect,
     orderBy: {
       offeredAt: "desc",
     },
   });
+
+  return candidates.map(({ requirement, ...candidate }) => {
+    const { createdBy, ...safeRequirement } = requirement;
+    const partner =
+      requirement.source === "PARTNER_CLIENT"
+        ? createdBy.partnerProfile
+        : null;
+
+    return {
+      ...candidate,
+      requirement: {
+        ...safeRequirement,
+        partner: partner
+          ? {
+              displayName: partner.user.name,
+              partnerType: partner.partnerType,
+              status: partner.status,
+            }
+          : null,
+      },
+    };
+  });
+};
+
+export const getWorkerPartnerAssociation = async (userId: string) => {
+  const profile = await prisma.workerProfile.findUnique({
+    where: { userId },
+    select: {
+      partner: {
+        select: {
+          createdAt: true,
+          partnerType: true,
+          status: true,
+          user: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!profile) throw new Error("Worker profile not found");
+  if (!profile.partner) return null;
+
+  return {
+    displayName: profile.partner.user.name,
+    partnerType: profile.partner.partnerType,
+    status: profile.partner.status,
+    registeredAt: profile.partner.createdAt,
+  };
 };
 
 export const acceptWorkerRequirementOffer = async (

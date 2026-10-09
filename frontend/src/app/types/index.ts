@@ -416,6 +416,8 @@ export interface WorkerRequirementOffer {
   createdAt?: string;
   requirement: {
     id: string;
+    source: RequirementSource;
+    status: RequirementStatus;
     city: string;
     state?: string | null;
     shiftTiming?: ShiftTiming | null;
@@ -428,7 +430,19 @@ export interface WorkerRequirementOffer {
     workGeography?: WorkGeography | null;
     category: { id: string; name: string };
     subCategory: { id: string; name: string };
+    partner: {
+      displayName: string;
+      partnerType: import('./partner').PartnerType;
+      status: import('./partner').PartnerStatus;
+    } | null;
   };
+}
+
+export interface WorkerPartnerAssociation {
+  displayName: string;
+  partnerType: import('./partner').PartnerType;
+  status: import('./partner').PartnerStatus;
+  registeredAt: string;
 }
 
 export interface WorkerRequirementOfferActionResult {
