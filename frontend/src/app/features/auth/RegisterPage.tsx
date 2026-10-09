@@ -10,25 +10,38 @@ import { Label } from '../../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Badge } from '../../components/ui/badge';
+import { PARTNER_TYPES, type PartnerType } from '../../types/partner';
 
 interface RegisterForm {
   name: string;
   phone: string;
   password: string;
-  role: 'CUSTOMER' | 'WORKER';
+  partnerType?: PartnerType;
 }
+
+type RegistrationRole = 'CUSTOMER' | 'WORKER' | 'PARTNER';
+
+const partnerTypeLabel = (value: PartnerType) =>
+  value.split('_').map((word) => word.charAt(0) + word.slice(1).toLowerCase()).join(' ');
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<'CUSTOMER' | 'WORKER'>('CUSTOMER');
+  const [selectedRole, setSelectedRole] = useState<RegistrationRole>('CUSTOMER');
+  const [selectedPartnerType, setSelectedPartnerType] = useState<PartnerType>('FREELANCER');
   const { register, handleSubmit, formState: { errors } } = useForm<RegisterForm>();
 
   const onSubmit = async (data: RegisterForm) => {
     try {
       setLoading(true);
-      const response = await authService.register({ ...data, role: selectedRole });
+      const response = await authService.register({
+        name: data.name,
+        phone: data.phone,
+        password: data.password,
+        role: selectedRole,
+        ...(selectedRole === 'PARTNER' ? { partnerType: selectedPartnerType } : {}),
+      });
       login(response.token, response.user);
       toast.success('Registration successful!');
 
@@ -36,6 +49,8 @@ export default function RegisterPage() {
         navigate('/customer');
       } else if (response.user.role === 'WORKER') {
         navigate('/worker');
+      } else if (response.user.role === 'PARTNER') {
+        navigate('/partner');
       } else {
         navigate('/');
       }
@@ -145,7 +160,7 @@ export default function RegisterPage() {
                 <Label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
                   I am registering as
                 </Label>
-                <Select value={selectedRole} onValueChange={(value) => setSelectedRole(value as 'CUSTOMER' | 'WORKER')}>
+                <Select value={selectedRole} onValueChange={(value) => setSelectedRole(value as RegistrationRole)}>
                   <SelectTrigger className="h-10 text-sm">
                     <SelectValue />
                   </SelectTrigger>
@@ -162,6 +177,12 @@ export default function RegisterPage() {
                         <span className="text-xs text-neutral-400">I want to offer my services</span>
                       </div>
                     </SelectItem>
+                    <SelectItem value="PARTNER">
+                      <div className="flex flex-col">
+                        <span>Partner</span>
+                        <span className="text-xs text-neutral-400">I manage a workforce and client requirements</span>
+                      </div>
+                    </SelectItem>
                     <SelectItem value="EMPLOYER" disabled>
                       <div className="flex items-center gap-2">
                         <span className="text-neutral-400">Employer</span>
@@ -171,6 +192,27 @@ export default function RegisterPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {selectedRole === 'PARTNER' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="partnerType" className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                    Partner type
+                  </Label>
+                  <Select value={selectedPartnerType} onValueChange={(value) => setSelectedPartnerType(value as PartnerType)}>
+                    <SelectTrigger id="partnerType" className="h-10 text-sm">
+                      <SelectValue placeholder="Select partner type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PARTNER_TYPES.map((partnerType) => (
+                        <SelectItem key={partnerType} value={partnerType}>{partnerTypeLabel(partnerType)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Partner accounts require approval before workforce and requirement operations are available.
+                  </p>
+                </div>
+              )}
 
               <Button
                 type="submit"

@@ -16,6 +16,9 @@ import {
 addWorkerLocationHandler,
 deleteWorkerLocationHandler,
 setPrimaryWorkerLocationHandler,
+getWorkerRequirementOffersHandler,
+acceptWorkerRequirementOfferHandler,
+rejectWorkerRequirementOfferHandler,
 } from "./worker.controller";
 
 const router = express.Router();
@@ -53,6 +56,21 @@ router.delete(
 router.patch(
   "/locations/:locationId/primary",
   setPrimaryWorkerLocationHandler
+);
+
+router.get(
+  "/requirements/offers",
+  getWorkerRequirementOffersHandler
+);
+
+router.post(
+  "/requirements/offers/:candidateId/accept",
+  acceptWorkerRequirementOfferHandler
+);
+
+router.post(
+  "/requirements/offers/:candidateId/reject",
+  rejectWorkerRequirementOfferHandler
 );
 
 export default router;

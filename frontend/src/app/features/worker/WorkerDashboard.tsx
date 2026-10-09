@@ -1,14 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import WorkerLayout from '../../layouts/WorkerLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Switch } from '../../components/ui/switch';
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { bookingService, workerService, profileService, walletService } from '../../services/api';
+import type { WorkerRequirementOffer } from '../../types';
 import { Calendar, CheckCircle, Star, Wallet, Clock, TrendingUp } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
+import { Button } from '../../components/ui/button';
 
 const StarDisplay = ({ rating }: { rating: number }) => (
   <div className="flex gap-0.5">
@@ -20,7 +22,9 @@ const StarDisplay = ({ rating }: { rating: number }) => (
 
 export default function WorkerDashboard() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [isAvailable, setIsAvailable] = useState(true);
+  const [processedOffers, setProcessedOffers] = useState<WorkerRequirementOffer[]>([]);
 
   const { data: bookings = [] } = useQuery({
     queryKey: ['worker-bookings'],
@@ -38,6 +42,70 @@ export default function WorkerDashboard() {
     queryKey: ['worker-wallet'],
     queryFn: walletService.getMyWallet,
     retry: false,
+  });
+
+  const {
+    data: requirementOffers = [],
+    isLoading: offersLoading,
+    isError: offersError,
+  } = useQuery({
+    queryKey: ['worker-requirement-offers'],
+    queryFn: workerService.getRequirementOffers,
+  });
+
+  const rememberOfferResult = (result: Awaited<ReturnType<typeof workerService.acceptRequirementOffer>>) => {
+    const originalOffer = requirementOffers.find((offer) => offer.id === result.id);
+
+    if (originalOffer) {
+      setProcessedOffers((current) => [
+        {
+          ...originalOffer,
+          status: result.status,
+          acceptedAt: result.acceptedAt,
+          assignedAt: result.assignedAt,
+          rejectedAt: result.rejectedAt,
+        },
+        ...current.filter((offer) => offer.id !== result.id),
+      ].slice(0, 5));
+    }
+
+    queryClient.setQueryData<WorkerRequirementOffer[]>(
+      ['worker-requirement-offers'],
+      (current = []) => current.filter((offer) => offer.id !== result.id)
+    );
+    queryClient.invalidateQueries({
+      queryKey: ['worker-requirement-offers'],
+    });
+  };
+
+  const acceptOfferMutation = useMutation({
+    mutationFn: workerService.acceptRequirementOffer,
+    onSuccess: (result) => {
+      rememberOfferResult(result);
+      toast.success(
+        result.status === 'ASSIGNED'
+          ? 'Requirement offer accepted'
+          : `Offer response recorded: ${result.status}`
+      );
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Unable to accept requirement offer');
+    },
+  });
+
+  const rejectOfferMutation = useMutation({
+    mutationFn: workerService.rejectRequirementOffer,
+    onSuccess: (result) => {
+      rememberOfferResult(result);
+      toast.success(
+        result.status === 'REJECTED'
+          ? 'Requirement offer rejected'
+          : `Offer response recorded: ${result.status}`
+      );
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Unable to reject requirement offer');
+    },
   });
 
   useEffect(() => {
@@ -111,6 +179,98 @@ export default function WorkerDashboard() {
         </div>
 
         {/* ── Wallet summary cards ──────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Requirement Offers</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {offersLoading ? (
+              <p className="py-4 text-sm text-neutral-500">Loading offers…</p>
+            ) : offersError ? (
+              <p className="py-4 text-sm text-red-600">Unable to load requirement offers.</p>
+            ) : requirementOffers.length === 0 && processedOffers.length === 0 ? (
+              <p className="py-4 text-sm text-neutral-500">No requirement offers right now.</p>
+            ) : (
+              <div className="space-y-3">
+                {requirementOffers.map((offer) => {
+                  const accepting = acceptOfferMutation.isPending && acceptOfferMutation.variables === offer.id;
+                  const rejecting = rejectOfferMutation.isPending && rejectOfferMutation.variables === offer.id;
+                  const busy = accepting || rejecting;
+
+                  return (
+                    <div key={offer.id} className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">
+                            {offer.requirement.category.name} · {offer.requirement.subCategory.name}
+                          </p>
+                          <p className="mt-1 text-sm text-neutral-500">
+                            {[offer.requirement.city, offer.requirement.state].filter(Boolean).join(', ')}
+                          </p>
+                        </div>
+                        <Badge variant="outline">{offer.status}</Badge>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-neutral-600 dark:text-neutral-400 sm:grid-cols-3">
+                        <p>Joining: {new Date(offer.requirement.joiningDate).toLocaleDateString()}</p>
+                        <p>Minimum experience: {offer.requirement.minExperience} years</p>
+                        <p>Workers needed: {offer.requirement.requiredWorkerCount}</p>
+                        {offer.requirement.shiftTiming && <p>Shift: {offer.requirement.shiftTiming.replace(/_/g, ' ')}</p>}
+                        {offer.requirement.salaryBudget != null && <p>Budget: ₹{offer.requirement.salaryBudget}/month</p>}
+                        {offer.offeredAt && <p>Offered: {new Date(offer.offeredAt).toLocaleString()}</p>}
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => acceptOfferMutation.mutate(offer.id)}
+                          disabled={busy}
+                        >
+                          {accepting ? 'Accepting…' : 'Accept'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => rejectOfferMutation.mutate(offer.id)}
+                          disabled={busy}
+                        >
+                          {rejecting ? 'Rejecting…' : 'Reject'}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {processedOffers.map((offer) => (
+                  <div key={offer.id} className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="font-semibold">
+                        {offer.requirement.category.name} · {offer.requirement.subCategory.name}
+                      </p>
+                      <Badge variant={offer.status === 'ASSIGNED' ? 'default' : 'secondary'}>
+                        {offer.status}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-neutral-500">
+                      {[offer.requirement.city, offer.requirement.state].filter(Boolean).join(', ')}
+                    </p>
+                    {offer.acceptedAt && (
+                      <p className="mt-2 text-xs text-neutral-500">
+                        Accepted: {new Date(offer.acceptedAt).toLocaleString()}
+                      </p>
+                    )}
+                    {offer.rejectedAt && (
+                      <p className="mt-2 text-xs text-neutral-500">
+                        Rejected: {new Date(offer.rejectedAt).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <div>
           <h2 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-3">Wallet</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

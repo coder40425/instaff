@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from './components/ui/sonner';
 import { AuthProvider, useAuth } from './hooks/useAuth';
@@ -27,6 +27,7 @@ import WorkerLocation from './features/worker/WorkerLocation';
 import WorkerEarnings from './features/worker/WorkerEarnings';
 
 import AdminDashboard from './features/admin/AdminDashboard';
+import PartnerVerification from './features/admin/PartnerVerification';
 import AdminAnalytics from './features/admin/AdminAnalytics';
 import PendingWorkers from './features/admin/PendingWorkers';
 import WorkerManagement from './features/admin/WorkerManagement';
@@ -41,6 +42,15 @@ import CrmRequirements from './features/admin/crm/CrmRequirements';
 import CrmRequirementDetails from './features/admin/crm/CrmRequirementDetails';
 
 import EmployerPortal from './features/employer/EmployerPortal';
+import PartnerDashboard from './features/partner/PartnerDashboard';
+import PartnerProfile from './features/partner/PartnerProfile';
+import PartnerWorkers from './features/partner/PartnerWorkers';
+import PartnerRequirements from './features/partner/PartnerRequirements';
+import PartnerAssignments from './features/partner/PartnerAssignments';
+import PartnerLayout from './layouts/PartnerLayout';
+import { partnerService } from './services/partnerApi';
+import { Card, CardContent } from './components/ui/card';
+import { Button } from './components/ui/button';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,6 +88,54 @@ function ProtectedRoute({
   return <>{children}</>;
 }
 
+function ApprovedPartnerRoute({ children }: { children: React.ReactNode }) {
+  const { data: profile, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ['partner-profile'],
+    queryFn: partnerService.getProfile,
+  });
+
+  if (isLoading) {
+    return (
+      <PartnerLayout>
+        <Card><CardContent className="py-12 text-center text-neutral-500">Checking Partner approval…</CardContent></Card>
+      </PartnerLayout>
+    );
+  }
+
+  if (isError || !profile) {
+    return (
+      <PartnerLayout>
+        <Card className="mx-auto max-w-xl border-red-200 dark:border-red-900">
+          <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+            <p className="font-medium">Unable to verify Partner approval</p>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">
+              {(error as any)?.response?.data?.message || (error as Error)?.message || 'Please try again.'}
+            </p>
+            <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>Retry</Button>
+          </CardContent>
+        </Card>
+      </PartnerLayout>
+    );
+  }
+
+  if (profile.status !== 'APPROVED') {
+    return (
+      <PartnerLayout>
+        <Card className="mx-auto max-w-xl border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20">
+          <CardContent className="py-10 text-center">
+            <h1 className="text-lg font-semibold">Partner approval required</h1>
+            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
+              Operational features are unavailable while your Partner status is {profile.status.toLowerCase()}. You can review your status on your profile.
+            </p>
+          </CardContent>
+        </Card>
+      </PartnerLayout>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -104,6 +162,7 @@ function AppRoutes() {
       <Route path="/worker/earnings" element={<ProtectedRoute allowedRoles={['WORKER']}><WorkerEarnings /></ProtectedRoute>} />
 
       <Route path="/admin" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminDashboard /></ProtectedRoute>} />
+      <Route path="/admin/partners" element={<ProtectedRoute allowedRoles={['ADMIN']}><PartnerVerification /></ProtectedRoute>} />
       <Route path="/admin/analytics" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminAnalytics /></ProtectedRoute>} />
       <Route path="/admin/workers/pending" element={<ProtectedRoute allowedRoles={['ADMIN']}><PendingWorkers /></ProtectedRoute>} />
       <Route path="/admin/workers" element={<ProtectedRoute allowedRoles={['ADMIN']}><WorkerManagement /></ProtectedRoute>} />
@@ -118,6 +177,15 @@ function AppRoutes() {
       <Route path="/admin/crm/requirements/:id" element={<ProtectedRoute allowedRoles={['ADMIN']}><CrmRequirementDetails /></ProtectedRoute>} />
 
       <Route path="/employer" element={<EmployerPortal />} />
+
+      <Route path="/partner" element={<ProtectedRoute allowedRoles={['PARTNER']}><PartnerDashboard /></ProtectedRoute>} />
+      <Route path="/partner/profile" element={<ProtectedRoute allowedRoles={['PARTNER']}><PartnerProfile /></ProtectedRoute>} />
+      <Route path="/partner/workers" element={<ProtectedRoute allowedRoles={['PARTNER']}><ApprovedPartnerRoute><PartnerWorkers /></ApprovedPartnerRoute></ProtectedRoute>} />
+      <Route path="/partner/requirements" element={<ProtectedRoute allowedRoles={['PARTNER']}><ApprovedPartnerRoute><PartnerRequirements /></ApprovedPartnerRoute></ProtectedRoute>} />
+      <Route path="/partner/requirements/create" element={<ProtectedRoute allowedRoles={['PARTNER']}><ApprovedPartnerRoute><CreateRequirementPage /></ApprovedPartnerRoute></ProtectedRoute>} />
+      <Route path="/partner/requirements/:id" element={<ProtectedRoute allowedRoles={['PARTNER']}><ApprovedPartnerRoute><RequirementDetailsPage /></ApprovedPartnerRoute></ProtectedRoute>} />
+      <Route path="/partner/assignments" element={<ProtectedRoute allowedRoles={['PARTNER']}><ApprovedPartnerRoute><PartnerAssignments /></ApprovedPartnerRoute></ProtectedRoute>} />
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

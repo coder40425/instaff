@@ -2,12 +2,55 @@ import { Response } from "express";
 import { AuthRequest } from "../../middleware/authMiddleware";
 
 import {
+  getPendingPartners, getAllPartners, approvePartner, rejectPartner, suspendPartner, reactivatePartner,
   getPendingWorkers, approveWorker, rejectWorker, suspendWorker, reactivateWorker,
   getAllBookings, getAnalytics, reassignBooking, forceCompleteBooking, forceCancelBooking,
   getReplacementCandidates,
   getPlatformPaymentInfo, upsertPlatformPaymentInfo,
   getAllWorkerWallets, settleWorkerWallet, getWorkerWalletById,
 } from "./admin.service";
+
+export const pendingPartners = async (_req: AuthRequest, res: Response) => {
+  try {
+    const partners = await getPendingPartners();
+    return res.json({ success: true, count: partners.length, data: partners });
+  } catch (error: any) { return res.status(400).json({ success: false, message: error.message }); }
+};
+
+export const allPartners = async (_req: AuthRequest, res: Response) => {
+  try {
+    const partners = await getAllPartners();
+    return res.json({ success: true, count: partners.length, data: partners });
+  } catch (error: any) { return res.status(400).json({ success: false, message: error.message }); }
+};
+
+export const approvePartnerHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const partner = await approvePartner(String(req.params.partnerProfileId));
+    return res.json({ success: true, data: partner });
+  } catch (error: any) { return res.status(400).json({ success: false, message: error.message }); }
+};
+
+export const rejectPartnerHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const partner = await rejectPartner(String(req.params.partnerProfileId));
+    return res.json({ success: true, data: partner });
+  } catch (error: any) { return res.status(400).json({ success: false, message: error.message }); }
+};
+
+export const suspendPartnerHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const partner = await suspendPartner(String(req.params.partnerProfileId));
+    return res.json({ success: true, data: partner });
+  } catch (error: any) { return res.status(400).json({ success: false, message: error.message }); }
+};
+
+export const reactivatePartnerHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const partner = await reactivatePartner(String(req.params.partnerProfileId));
+    return res.json({ success: true, data: partner });
+  } catch (error: any) { return res.status(400).json({ success: false, message: error.message }); }
+};
 
 export const pendingWorkers = async (req: AuthRequest, res: Response) => {
   try {

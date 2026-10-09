@@ -18,7 +18,8 @@ export const generateMatchesHandler = async (
     const result =
       await generateRequirementMatches(
         String(req.params.id),
-        req.user!.userId
+        req.user!.userId,
+        req.user!.role === "ADMIN"
       );
 
     res.json({
@@ -43,7 +44,8 @@ export const buildAssignmentPoolHandler = async (
     const result =
       await buildAssignmentPool(
         String(req.params.id),
-        req.user!.userId
+        req.user!.userId,
+        req.user!.role === "ADMIN"
       );
 
     res.json({
@@ -81,7 +83,8 @@ export const assignRequirementWorkerHandler =
         await assignRequirementWorker(
           String(req.params.id),
           workerProfileId,
-          req.user!.userId
+          req.user!.userId,
+          req.user!.role === "ADMIN"
         );
 
       res.json({

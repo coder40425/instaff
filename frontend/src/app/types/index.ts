@@ -1,4 +1,4 @@
-export type Role = 'CUSTOMER' | 'WORKER' | 'ADMIN' | 'EMPLOYER';
+export type Role = 'CUSTOMER' | 'WORKER' | 'ADMIN' | 'EMPLOYER' | 'PARTNER';
 
 export type BookingStatus =
   | 'PENDING'
@@ -45,6 +45,8 @@ export type EducationLevel =
 export type WorkMode = 'ON_SITE' | 'REMOTE';
 
 export type WorkGeography = 'DOMESTIC' | 'INTERNATIONAL';
+
+export type ShiftTiming = 'DAY' | 'NIGHT' | 'LIVE_IN_24_HOURS';
 
 // ── Skill taxonomy types ──────────────────────────────────────────────────────
 
@@ -310,6 +312,7 @@ export interface RegisterRequest {
   phone: string;
   password: string;
   role: Role;
+  partnerType?: import('./partner').PartnerType;
 }
 
 export interface AuthResponse {
@@ -338,13 +341,19 @@ export type RequirementStatus =
   | 'MATCHING'
   | 'FILLED'
   | 'COMPLETED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'EXPIRED';
+
+export type RequirementSource =
+  | 'NEARPASSWAY_CUSTOMER'
+  | 'PARTNER_CLIENT';
 
 export type RequirementCandidateStatus =
   | 'RECOMMENDED'
   | 'SHORTLISTED'
   | 'PRIMARY'
   | 'BACKUP'
+  | 'OFFERED'
   | 'ASSIGNED'
   | 'REJECTED'
   | 'EXPIRED';
@@ -355,7 +364,7 @@ export interface CreateRequirementPayload {
   city: string;
   state?: string;
   address?: string;
-  shiftTiming?: string;
+  shiftTiming?: ShiftTiming;
   salaryBudget?: number;
   minExperience?: number;
   joiningDate: string;
@@ -386,12 +395,55 @@ export interface RequirementCandidate {
   notifiedAt?: string | null;
   interestedAt?: string | null;
   shortlistedAt?: string | null;
+  offeredAt?: string | null;
+  acceptedAt?: string | null;
   assignedAt?: string | null;
 
   createdAt?: string;
   updatedAt?: string;
 
   workerProfile?: PublicWorkerProfile;
+}
+
+export interface WorkerRequirementOffer {
+  id: string;
+  requirementId: string;
+  status: RequirementCandidateStatus;
+  offeredAt?: string | null;
+  acceptedAt?: string | null;
+  assignedAt?: string | null;
+  rejectedAt?: string | null;
+  createdAt?: string;
+  requirement: {
+    id: string;
+    city: string;
+    state?: string | null;
+    shiftTiming?: ShiftTiming | null;
+    salaryBudget?: number | null;
+    minExperience: number;
+    joiningDate: string;
+    requiredWorkerCount: number;
+    employmentTypes: EmploymentType[];
+    workMode?: WorkMode | null;
+    workGeography?: WorkGeography | null;
+    category: { id: string; name: string };
+    subCategory: { id: string; name: string };
+  };
+}
+
+export interface WorkerRequirementOfferActionResult {
+  id: string;
+  requirementId: string;
+  workerProfileId?: string;
+  status: RequirementCandidateStatus;
+  offeredAt?: string | null;
+  acceptedAt?: string | null;
+  assignedAt?: string | null;
+  rejectedAt?: string | null;
+  requirement?: {
+    id: string;
+    status: RequirementStatus;
+  };
 }
 
 export interface Requirement {
@@ -405,7 +457,7 @@ export interface Requirement {
   state?: string | null;
   address?: string | null;
 
-  shiftTiming?: string | null;
+  shiftTiming?: ShiftTiming | null;
   salaryBudget?: number | null;
   minExperience: number;
 
@@ -422,6 +474,7 @@ export interface Requirement {
   preferredWorkerProfileId?: string | null;
 
   status: RequirementStatus;
+  source?: RequirementSource;
 
   createdAt: string;
   updatedAt: string;
@@ -477,6 +530,7 @@ export interface CrmPipelineCounts {
   shortlisted: number;
   primary: number;
   backup: number;
+  offered: number;
   assigned: number;
   rejected: number;
   expired: number;
@@ -530,6 +584,7 @@ export interface CrmOverviewMatching {
   shortlisted: number;
   primary: number;
   backup: number;
+  offered: number;
   assigned: number;
 }
 

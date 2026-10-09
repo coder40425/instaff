@@ -168,6 +168,8 @@ const crmCandidateSelect = {
   notifiedAt: true,
   interestedAt: true,
   shortlistedAt: true,
+  offeredAt: true,
+  acceptedAt: true,
   assignedAt: true,
 
   createdAt: true,
@@ -267,6 +269,7 @@ const buildPipeline = (
     shortlisted: 0,
     primary: 0,
     backup: 0,
+    offered: 0,
     assigned: 0,
     rejected: 0,
     expired: 0,
@@ -288,6 +291,10 @@ const buildPipeline = (
 
       case RequirementCandidateStatus.BACKUP:
         pipeline.backup++;
+        break;
+
+      case RequirementCandidateStatus.OFFERED:
+        pipeline.offered++;
         break;
 
       case RequirementCandidateStatus.ASSIGNED:
@@ -321,6 +328,7 @@ export const getCrmOverview = async () => {
     shortlistedCandidates,
     primaryCandidates,
     backupCandidates,
+    offeredCandidates,
     assignedCandidates,
 
     pendingWorkers,
@@ -372,6 +380,13 @@ export const getCrmOverview = async () => {
       where: {
         status:
           RequirementCandidateStatus.BACKUP,
+      },
+    }),
+
+    prisma.requirementCandidate.count({
+      where: {
+        status:
+          RequirementCandidateStatus.OFFERED,
       },
     }),
 
@@ -498,6 +513,9 @@ export const getCrmOverview = async () => {
 
       backup:
         backupCandidates,
+
+      offered:
+        offeredCandidates,
 
       assigned:
         assignedCandidates,

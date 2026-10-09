@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 
 import CustomerLayout from '../../layouts/CustomerLayout';
+import PartnerLayout from '../../layouts/PartnerLayout';
+import { useAuth } from '../../hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -12,13 +14,12 @@ import { requirementService, matchingService } from '../../services/api';
 import type {
   RequirementCandidate,
   RequirementCandidateStatus,
+  ShiftTiming,
 } from '../../types';
 
 import {
   MapPin,
-  Calendar,
   Users,
-  IndianRupee,
   Star,
   RefreshCw,
   Layers,
@@ -39,6 +40,8 @@ const STATUS_STYLES: Record<RequirementCandidateStatus, string> = {
     'bg-purple-100 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300',
   BACKUP:
     'bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300',
+  OFFERED:
+    'bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300',
   ASSIGNED:
     'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300',
   REJECTED:
@@ -70,17 +73,44 @@ function formatAssignmentMode(mode: string) {
   }
 }
 
-function getScoreLabel(score: number) {
-  if (score >= 90) return 'Excellent match';
-  if (score >= 75) return 'Strong match';
-  if (score >= 60) return 'Good match';
-  return 'Potential match';
+const SHIFT_TIMING_LABELS: Record<ShiftTiming, string> = {
+  DAY: 'Day',
+  NIGHT: 'Night',
+  LIVE_IN_24_HOURS: 'Live-in / 24 Hours',
+};
+
+function RequirementInfo({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs text-neutral-500">{label}</p>
+      <p className="text-sm font-medium break-words">{children}</p>
+    </div>
+  );
+}
+
+function formatDateTime(value?: string | null) {
+  return value
+    ? new Date(value).toLocaleString('en-IN', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
+    : null;
 }
 
 export default function RequirementDetailsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isPartner = user?.role === 'PARTNER';
+  const PageLayout = isPartner ? PartnerLayout : CustomerLayout;
+  const requirementsPath = isPartner ? '/partner/requirements' : '/customer/requirements';
 
   const {
     data: requirement,
@@ -161,33 +191,37 @@ export default function RequirementDetailsPage() {
 
   const assignMutation = useMutation({
     mutationFn: (workerProfileId: string) =>
-      matchingService.assignWorker(id!, workerProfileId),
+      matchingService.sendAssignmentOffer(id!, workerProfileId),
 
-    onSuccess: () => {
-      toast.success('Worker assigned successfully');
+    onSuccess: (candidate) => {
+      toast.success(
+        candidate.status === 'OFFERED'
+          ? 'Assignment offer sent. Waiting for worker acceptance.'
+          : `Candidate status updated: ${candidate.status}`
+      );
       invalidate();
     },
 
     onError: (e: any) => {
       toast.error(
-        e.response?.data?.message || 'Failed to assign worker'
+        e.response?.data?.message || 'Failed to send assignment offer'
       );
     },
   });
 
   if (isLoading) {
     return (
-      <CustomerLayout>
+      <PageLayout>
         <div className="flex items-center justify-center py-20 text-neutral-500">
           Loading requirement…
         </div>
-      </CustomerLayout>
+      </PageLayout>
     );
   }
 
   if (isError || !requirement) {
     return (
-      <CustomerLayout>
+      <PageLayout>
         <div className="max-w-2xl mx-auto text-center py-20 space-y-4">
           <div className="w-12 h-12 mx-auto rounded-full bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center">
             <BriefcaseBusiness className="w-5 h-5 text-neutral-400" />
@@ -206,12 +240,12 @@ export default function RequirementDetailsPage() {
 
           <Button
             variant="outline"
-            onClick={() => navigate('/customer/requirements')}
+            onClick={() => navigate(requirementsPath)}
           >
             Back to Requirements
           </Button>
         </div>
-      </CustomerLayout>
+      </PageLayout>
     );
   }
 
@@ -220,9 +254,15 @@ export default function RequirementDetailsPage() {
   ].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
 
   const primaryCandidates = candidates.filter(
-    (candidate) =>
-      candidate.status === 'PRIMARY' ||
-      candidate.status === 'ASSIGNED'
+    (candidate) => candidate.status === 'PRIMARY'
+  );
+
+  const offeredCandidates = candidates.filter(
+    (candidate) => candidate.status === 'OFFERED'
+  );
+
+  const assignedCandidates = candidates.filter(
+    (candidate) => candidate.status === 'ASSIGNED'
   );
 
   const backupCandidates = candidates.filter(
@@ -239,8 +279,14 @@ export default function RequirementDetailsPage() {
     (candidate) => candidate.status === 'ASSIGNED'
   ).length;
 
+  const preferredWorker = candidates.find(
+    (candidate) =>
+      candidate.workerProfileId ===
+      requirement.preferredWorkerProfileId
+  )?.workerProfile;
+
   return (
-    <CustomerLayout>
+    <PageLayout>
       <div className="max-w-5xl mx-auto space-y-6 px-1 sm:px-0">
 
         {/* Back */}
@@ -340,70 +386,87 @@ export default function RequirementDetailsPage() {
 
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <RequirementInfo label="Location">
+                {requirement.city}
+                {requirement.state ? `, ${requirement.state}` : ''}
+              </RequirementInfo>
 
-              <div className="flex items-start gap-2">
-                <MapPin className="w-4 h-4 text-neutral-500 mt-0.5" />
+              <RequirementInfo label="Address">
+                {requirement.address || 'Not specified'}
+              </RequirementInfo>
 
-                <div>
-                  <p className="text-xs text-neutral-500">
-                    Location
-                  </p>
+              <RequirementInfo label="Joining Date">
+                {new Date(requirement.joiningDate).toLocaleDateString()}
+              </RequirementInfo>
 
-                  <p className="text-sm font-medium">
-                    {requirement.city}
-                    {requirement.state
-                      ? `, ${requirement.state}`
-                      : ''}
-                  </p>
-                </div>
-              </div>
+              <RequirementInfo label="Required Workers">
+                {requirement.requiredWorkerCount}
+              </RequirementInfo>
 
-              <div className="flex items-start gap-2">
-                <Calendar className="w-4 h-4 text-neutral-500 mt-0.5" />
+              <RequirementInfo label="Minimum Experience">
+                {requirement.minExperience} yr
+                {requirement.minExperience === 1 ? '' : 's'}
+              </RequirementInfo>
 
-                <div>
-                  <p className="text-xs text-neutral-500">
-                    Joining Date
-                  </p>
+              <RequirementInfo label="Shift Timing">
+                {requirement.shiftTiming
+                  ? SHIFT_TIMING_LABELS[requirement.shiftTiming] ??
+                    requirement.shiftTiming
+                  : 'Not specified'}
+              </RequirementInfo>
 
-                  <p className="text-sm font-medium">
-                    {new Date(
-                      requirement.joiningDate
-                    ).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
+              <RequirementInfo label="Salary Budget">
+                {requirement.salaryBudget != null
+                  ? `₹${requirement.salaryBudget}/month`
+                  : 'Not specified'}
+              </RequirementInfo>
 
-              <div className="flex items-start gap-2">
-                <Users className="w-4 h-4 text-neutral-500 mt-0.5" />
+              <RequirementInfo label="Employment Types">
+                {requirement.employmentTypes.length > 0
+                  ? requirement.employmentTypes
+                      .map((type) => type.replace(/_/g, ' '))
+                      .join(', ')
+                  : 'Not specified'}
+              </RequirementInfo>
 
-                <div>
-                  <p className="text-xs text-neutral-500">
-                    Workers Needed
-                  </p>
+              <RequirementInfo label="Work Mode">
+                {requirement.workMode
+                  ? requirement.workMode.replace(/_/g, ' ')
+                  : 'Not specified'}
+              </RequirementInfo>
 
-                  <p className="text-sm font-medium">
-                    {requirement.requiredWorkerCount}
-                  </p>
-                </div>
-              </div>
+              <RequirementInfo label="Work Geography">
+                {requirement.workGeography
+                  ? requirement.workGeography.replace(/_/g, ' ')
+                  : 'Not specified'}
+              </RequirementInfo>
 
-              <div className="flex items-start gap-2">
-                <IndianRupee className="w-4 h-4 text-neutral-500 mt-0.5" />
+              {requirement.preferredCountries.length > 0 && (
+                <RequirementInfo label="Preferred Countries">
+                  {requirement.preferredCountries.join(', ')}
+                </RequirementInfo>
+              )}
 
-                <div>
-                  <p className="text-xs text-neutral-500">
-                    Salary Budget
-                  </p>
+              <RequirementInfo label="Assignment Mode">
+                {formatAssignmentMode(requirement.assignmentMode)}
+              </RequirementInfo>
 
-                  <p className="text-sm font-medium">
-                    {requirement.salaryBudget != null
-                      ? `₹${requirement.salaryBudget}/month`
-                      : 'Not specified'}
-                  </p>
-                </div>
-              </div>
+              <RequirementInfo label="Backup Pool Size">
+                {requirement.backupPoolSize}
+              </RequirementInfo>
 
+              {requirement.preferredWorkerProfileId && (
+                <RequirementInfo label="Preferred Worker">
+                  {preferredWorker?.user?.name ??
+                    'Preferred worker selected'}
+                  {preferredWorker?.experience != null &&
+                    ` · ${preferredWorker.experience} years experience`}
+                  {(preferredWorker?.city || preferredWorker?.state) &&
+                    ` · ${[preferredWorker.city, preferredWorker.state]
+                      .filter(Boolean)
+                      .join(', ')}`}
+                </RequirementInfo>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -580,7 +643,7 @@ export default function RequirementDetailsPage() {
         </Card>
 
         {/* ============================================================
-            PRIMARY / ASSIGNED
+            PRIMARY MATCHES
         ============================================================ */}
 
         {primaryCandidates.length > 0 && (
@@ -626,6 +689,50 @@ export default function RequirementDetailsPage() {
 
             </CardContent>
 
+          </Card>
+        )}
+
+        {offeredCandidates.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Assignment Offers</CardTitle>
+              <p className="text-sm text-neutral-500">
+                These workers have been offered the assignment and have not accepted yet.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {offeredCandidates.map((candidate) => (
+                <CandidateCard
+                  key={candidate.id}
+                  candidate={candidate}
+                  onAssign={() => undefined}
+                  assigning={assignMutation.isPending}
+                  navigate={navigate}
+                />
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {assignedCandidates.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Confirmed Assignments</CardTitle>
+              <p className="text-sm text-neutral-500">
+                These workers accepted their assignment offers.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {assignedCandidates.map((candidate) => (
+                <CandidateCard
+                  key={candidate.id}
+                  candidate={candidate}
+                  onAssign={() => undefined}
+                  assigning={assignMutation.isPending}
+                  navigate={navigate}
+                />
+              ))}
+            </CardContent>
           </Card>
         )}
 
@@ -739,6 +846,7 @@ export default function RequirementDetailsPage() {
             ![
               'PRIMARY',
               'ASSIGNED',
+              'OFFERED',
               'BACKUP',
               'RECOMMENDED',
               'SHORTLISTED',
@@ -760,6 +868,7 @@ export default function RequirementDetailsPage() {
                     ![
                       'PRIMARY',
                       'ASSIGNED',
+                      'OFFERED',
                       'BACKUP',
                       'RECOMMENDED',
                       'SHORTLISTED',
@@ -808,8 +917,9 @@ export default function RequirementDetailsPage() {
                   Candidates are ranked based on the requirement
                   and worker profile. Build the assignment pool to
                   organize the best candidates as primary and backup
-                  workers. Assignment is validated again by the
-                  server before completion.
+                  workers. Sending an assignment offer does not confirm
+                  the worker; the assignment is confirmed only after the
+                  worker accepts.
                 </p>
 
               </div>
@@ -821,7 +931,7 @@ export default function RequirementDetailsPage() {
         </Card>
 
       </div>
-    </CustomerLayout>
+    </PageLayout>
   );
 }
 
@@ -841,6 +951,7 @@ function CandidateCard({
   assigning: boolean;
   navigate: ReturnType<typeof useNavigate>;
 }) {
+  const { user } = useAuth();
   const worker = candidate.workerProfile;
 
   const skillNames = [...(worker?.skills ?? [])]
@@ -852,7 +963,10 @@ function CandidateCard({
     ASSIGNABLE_STATUSES.includes(candidate.status) &&
     !!worker;
 
-  const score = Number(candidate.matchScore ?? 0);
+  const matchReasons = candidate.matchReason
+    ?.split(',')
+    .map((reason) => reason.trim())
+    .filter(Boolean) ?? [];
 
   return (
     <div
@@ -966,15 +1080,37 @@ function CandidateCard({
             )}
 
             {/* Match reason */}
-            {candidate.matchReason && (
+            {matchReasons.length > 0 && (
               <div className="mt-3">
-                <p className="text-xs text-neutral-500">
-                  <span className="font-medium text-neutral-700 dark:text-neutral-300">
-                    Why this worker?
-                  </span>{' '}
-                  {candidate.matchReason}
+                <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                  Why matched
                 </p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-neutral-500">
+                  {matchReasons.map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
               </div>
+            )}
+
+            {(candidate.offeredAt || candidate.acceptedAt || candidate.assignedAt) && (
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
+                {candidate.offeredAt && (
+                  <span>Offered: {formatDateTime(candidate.offeredAt)}</span>
+                )}
+                {candidate.acceptedAt && (
+                  <span>Accepted: {formatDateTime(candidate.acceptedAt)}</span>
+                )}
+                {candidate.assignedAt && (
+                  <span>Assigned: {formatDateTime(candidate.assignedAt)}</span>
+                )}
+              </div>
+            )}
+
+            {candidate.status === 'OFFERED' && (
+              <p className="mt-2 text-xs font-medium text-blue-700 dark:text-blue-300">
+                Waiting for the worker to accept this offer.
+              </p>
             )}
 
           </div>
@@ -993,11 +1129,9 @@ function CandidateCard({
               </p>
 
               <p className="text-xl font-bold mt-0.5">
-                {score}%
-              </p>
-
-              <p className="text-[11px] text-neutral-400">
-                {getScoreLabel(score)}
+                {candidate.matchScore != null
+                  ? `${candidate.matchScore}%`
+                  : '—'}
               </p>
 
             </div>
@@ -1009,7 +1143,7 @@ function CandidateCard({
         {/* Actions */}
         <div className="flex gap-2 flex-shrink-0">
 
-          {worker && (
+          {worker && user?.role !== 'PARTNER' && (
             <Button
               variant="outline"
               size="sm"
@@ -1030,7 +1164,7 @@ function CandidateCard({
             >
               <UserCheck className="w-3.5 h-3.5" />
 
-              {assigning ? 'Assigning…' : 'Assign'}
+              {assigning ? 'Sending offer…' : 'Send Assignment Offer'}
             </Button>
           )}
 

@@ -32,6 +32,7 @@ import type {
   AssignmentMode,
   RequirementCandidateStatus,
   RequirementStatus,
+  ShiftTiming,
 } from '../../../types';
 
 import {
@@ -54,6 +55,7 @@ const REQUIREMENT_STATUS_LABELS: Record<
   FILLED: 'Filled',
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
+  EXPIRED: 'Expired',
 };
 
 const REQUIREMENT_STATUS_STYLES: Record<
@@ -77,6 +79,9 @@ const REQUIREMENT_STATUS_STYLES: Record<
 
   CANCELLED:
     'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300',
+
+  EXPIRED:
+    'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400',
 };
 
 const ASSIGNMENT_MODE_LABELS: Record<
@@ -88,6 +93,12 @@ const ASSIGNMENT_MODE_LABELS: Record<
   BULK_WORKFORCE: 'Bulk Workforce',
 };
 
+const SHIFT_TIMING_LABELS: Record<ShiftTiming, string> = {
+  DAY: 'Day',
+  NIGHT: 'Night',
+  LIVE_IN_24_HOURS: 'Live-in / 24 Hours',
+};
+
 const CANDIDATE_STATUS_LABELS: Record<
   RequirementCandidateStatus,
   string
@@ -96,6 +107,7 @@ const CANDIDATE_STATUS_LABELS: Record<
   SHORTLISTED: 'Shortlisted',
   PRIMARY: 'Primary',
   BACKUP: 'Backup',
+  OFFERED: 'Offered',
   ASSIGNED: 'Assigned',
   REJECTED: 'Rejected',
   EXPIRED: 'Expired',
@@ -116,6 +128,9 @@ const CANDIDATE_STATUS_STYLES: Record<
 
   BACKUP:
     'bg-purple-100 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300',
+
+  OFFERED:
+    'bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300',
 
   ASSIGNED:
     'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300',
@@ -403,12 +418,12 @@ export default function CrmRequirementDetails() {
       mutationFn: (
         workerProfileId: string
       ) =>
-        crmService.assignWorker(
+        crmService.sendAssignmentOffer(
           id!,
           workerProfileId
         ),
 
-      onSuccess: () => {
+      onSuccess: (candidate) => {
         refreshAll();
 
         queryClient.invalidateQueries({
@@ -424,7 +439,9 @@ export default function CrmRequirementDetails() {
         });
 
         toast.success(
-          'Worker assigned successfully'
+          candidate.status === 'OFFERED'
+            ? 'Assignment offer sent. Waiting for worker acceptance.'
+            : `Candidate status updated: ${candidate.status}`
         );
       },
 
@@ -437,6 +454,12 @@ export default function CrmRequirementDetails() {
 
   const candidates =
     requirement?.candidates ?? [];
+
+  const preferredWorker = candidates.find(
+    (candidate) =>
+      candidate.workerProfileId ===
+      requirement?.preferredWorkerProfileId
+  )?.workerProfile;
 
   const visibleCandidates =
     useMemo(
@@ -605,6 +628,12 @@ export default function CrmRequirementDetails() {
       label: 'Backup',
       count:
         pipelineCounts?.backup ??
+        0,
+    },
+    {
+      label: 'Offered',
+      count:
+        pipelineCounts?.offered ??
         0,
     },
     {
@@ -786,6 +815,10 @@ export default function CrmRequirementDetails() {
                   : ''}
               </InfoItem>
 
+              <InfoItem label="Address">
+                {requirement.address || '—'}
+              </InfoItem>
+
               <InfoItem label="Joining Date">
                 {formatDate(
                   requirement.joiningDate
@@ -805,8 +838,10 @@ export default function CrmRequirementDetails() {
               </InfoItem>
 
               <InfoItem label="Shift Timing">
-                {requirement.shiftTiming ??
-                  '—'}
+                {requirement.shiftTiming
+                  ? SHIFT_TIMING_LABELS[requirement.shiftTiming] ??
+                    requirement.shiftTiming
+                  : '—'}
               </InfoItem>
 
               <InfoItem label="Salary Budget">
@@ -849,14 +884,35 @@ export default function CrmRequirementDetails() {
                   : '—'}
               </InfoItem>
 
-            </div>
+              <InfoItem label="Work Geography">
+                {requirement.workGeography
+                  ? requirement.workGeography.replace(
+                      /_/g,
+                      ' '
+                    )
+                  : '—'}
+              </InfoItem>
 
-            {requirement.preferredWorkerProfileId && (
-              <div className="mt-4 flex items-center gap-2 border-t border-neutral-200 pt-4 text-xs text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
-                <UserCheck className="h-4 w-4" />
-                Preferred worker selected
-              </div>
-            )}
+              {requirement.preferredCountries.length > 0 && (
+                <InfoItem label="Preferred Countries">
+                  {requirement.preferredCountries.join(', ')}
+                </InfoItem>
+              )}
+
+              {requirement.preferredWorkerProfileId && (
+                <InfoItem label="Preferred Worker">
+                  {preferredWorker?.user?.name ??
+                    'Preferred worker selected'}
+                  {preferredWorker?.experience != null &&
+                    ` · ${preferredWorker.experience} years experience`}
+                  {(preferredWorker?.city || preferredWorker?.state) &&
+                    ` · ${[preferredWorker.city, preferredWorker.state]
+                      .filter(Boolean)
+                      .join(', ')}`}
+                </InfoItem>
+              )}
+
+            </div>
 
           </CardContent>
         </Card>
@@ -1039,6 +1095,11 @@ export default function CrmRequirementDetails() {
                             Boolean(value)
                         ) ?? [];
 
+                    const matchReasons = candidate.matchReason
+                      ?.split(',')
+                      .map((reason) => reason.trim())
+                      .filter(Boolean) ?? [];
+
                     const assignable =
                       canAssignCandidate(
                         candidate.status
@@ -1145,11 +1206,36 @@ export default function CrmRequirementDetails() {
                               </div>
                             )}
 
-                            {candidate.matchReason && (
-                              <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-                                {
-                                  candidate.matchReason
-                                }
+                            {matchReasons.length > 0 && (
+                              <div className="mt-2">
+                                <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                                  Why matched
+                                </p>
+                                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-neutral-500 dark:text-neutral-400">
+                                  {matchReasons.map((reason) => (
+                                    <li key={reason}>{reason}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {(candidate.offeredAt || candidate.acceptedAt || candidate.assignedAt) && (
+                              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400">
+                                {candidate.offeredAt && (
+                                  <span>Offered: {formatDateTime(candidate.offeredAt)}</span>
+                                )}
+                                {candidate.acceptedAt && (
+                                  <span>Accepted: {formatDateTime(candidate.acceptedAt)}</span>
+                                )}
+                                {candidate.assignedAt && (
+                                  <span>Assigned: {formatDateTime(candidate.assignedAt)}</span>
+                                )}
+                              </div>
+                            )}
+
+                            {candidate.status === 'OFFERED' && (
+                              <p className="mt-2 text-xs font-medium text-blue-700 dark:text-blue-300">
+                                Waiting for worker acceptance; this is not a confirmed assignment.
                               </p>
                             )}
 
@@ -1162,12 +1248,14 @@ export default function CrmRequirementDetails() {
 
                             {candidate.matchScore !=
                               null && (
-                              <p className="text-sm font-semibold">
-                                {
-                                  candidate.matchScore
-                                }
-                                %
-                              </p>
+                              <div>
+                                <p className="text-xs text-neutral-500">
+                                  Match Score
+                                </p>
+                                <p className="text-sm font-semibold">
+                                  {candidate.matchScore}%
+                                </p>
+                              </div>
                             )}
 
                             {candidate.rank !=
@@ -1200,12 +1288,12 @@ export default function CrmRequirementDetails() {
                                 candidate.workerProfileId ? (
                                 <>
                                   <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                  Assigning…
+                                  Sending offer…
                                 </>
                               ) : (
                                 <>
                                   <UserCheck className="mr-2 h-4 w-4" />
-                                  Assign
+                                  Send Assignment Offer
                                 </>
                               )}
                             </Button>
@@ -1241,7 +1329,8 @@ export default function CrmRequirementDetails() {
                   </p>
 
                   <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {fulfillment.assigned} assigned ·{' '}
+                    {fulfillment.assigned} accepted and assigned ·{' '}
+                    {pipelineCounts?.offered ?? 0} offers awaiting response ·{' '}
                     {fulfillment.remaining} remaining
                   </p>
                 </div>

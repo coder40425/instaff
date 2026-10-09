@@ -57,22 +57,24 @@ model PlatformPaymentInfo {
 }
 
 model User {
-  id                  String           @id @default(cuid())
+  id                  String               @id @default(cuid())
   name                String
-  phone               String           @unique
+  phone               String               @unique
   password            String
   role                Role
-  createdAt           DateTime         @default(now())
-  isActive            Boolean          @default(true)
-  updatedAt           DateTime         @default(now()) @updatedAt
-  customerBookings    Booking[]        @relation("CustomerBookings")
-  workerBookings      Booking[]        @relation("WorkerBookings")
+  createdAt           DateTime             @default(now())
+  isActive            Boolean              @default(true)
+  updatedAt           DateTime             @default(now()) @updatedAt
+  customerBookings    Booking[]            @relation("CustomerBookings")
+  workerBookings      Booking[]            @relation("WorkerBookings")
   customerProfile     CustomerProfile?
   employerProfile     EmployerProfile?
-  customerReviews     Review[]         @relation("CustomerReviews")
-  workerReviews       Review[]         @relation("WorkerReviews")
-  createdRequirements Requirement[]    @relation("CreatedRequirements")
+  customerReviews     Review[]             @relation("CustomerReviews")
+  workerReviews       Review[]             @relation("WorkerReviews")
+  createdRequirements Requirement[]        @relation("CreatedRequirements")
   workerProfile       WorkerProfile?
+  partnerProfile      PartnerProfile?
+  replacementRequests ReplacementRequest[] @relation("ReplacementRequester")
 }
 
 model CustomerProfile {
@@ -138,22 +140,26 @@ model WorkerProfile {
   requirementCandidates  RequirementCandidate[]
   locations              WorkerLocation[]
   preferredRequirements  Requirement[]          @relation("PreferredRequirementWorker")
+  partnerId              String?
+  partner                PartnerProfile?        @relation("WorkerPartner", fields: [partnerId], references: [id])
+
+  @@index([partnerId])
 }
 
 model WorkerLocation {
-  id              String        @id @default(cuid())
+  id              String @id @default(cuid())
   workerProfileId String
 
-  city            String
-  state           String?
-  latitude        Float?
-  longitude       Float?
-  isPrimary       Boolean       @default(false)
+  city      String
+  state     String?
+  latitude  Float?
+  longitude Float?
+  isPrimary Boolean @default(false)
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  workerProfile   WorkerProfile @relation(fields: [workerProfileId],references: [id],onDelete: Cascade)
+  workerProfile WorkerProfile @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
 
   @@index([workerProfileId])
   @@index([city])
@@ -171,6 +177,22 @@ model EmployerProfile {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @default(now()) @updatedAt
   user          User     @relation(fields: [userId], references: [id])
+}
+
+model PartnerProfile {
+  id          String        @id @default(cuid())
+  userId      String        @unique
+  partnerType PartnerType
+  status      PartnerStatus @default(PENDING)
+  workerLimit Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  user        User                   @relation(fields: [userId], references: [id])
+  workers     WorkerProfile[]        @relation("WorkerPartner")
+  candidates  RequirementCandidate[] @relation("PartnerRequirementCandidates")
+  commissions PartnerCommission[]
 }
 
 model WorkerWallet {
@@ -298,6 +320,7 @@ enum Role {
   WORKER
   ADMIN
   EMPLOYER
+  PARTNER
 }
 
 enum Gender {
@@ -397,9 +420,44 @@ enum RequirementCandidateStatus {
   SHORTLISTED
   PRIMARY
   BACKUP
+  OFFERED
   ASSIGNED
   REJECTED
   EXPIRED
+}
+
+enum RequirementSource {
+  NEARPASSWAY_CUSTOMER
+  PARTNER_CLIENT
+}
+
+enum ReplacementRequestStatus {
+  OPEN
+  OFFERED
+  RESOLVED
+  CANCELLED
+}
+
+enum PartnerCommissionStatus {
+  PENDING
+  EARNED
+  CANCELLED
+}
+
+enum PartnerType {
+  FREELANCER
+  AGENT
+  AGENCY
+  CONSULTANCY
+  MANPOWER_SUPPLIER
+  INTERNATIONAL_RECRUITER
+}
+
+enum PartnerStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
 }
 
 model Requirement {
@@ -431,6 +489,7 @@ model Requirement {
   preferredWorkerProfileId String?
 
   status RequirementStatus @default(DRAFT)
+  source RequirementSource @default(NEARPASSWAY_CUSTOMER)
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -444,12 +503,15 @@ model Requirement {
 
   preferredWorkerProfile WorkerProfile? @relation("PreferredRequirementWorker", fields: [preferredWorkerProfileId], references: [id])
 
-  candidates RequirementCandidate[]
+  candidates          RequirementCandidate[]
+  replacementRequests ReplacementRequest[]
+  commissions         PartnerCommission[]
 
   @@index([createdById])
   @@index([categoryId])
   @@index([subCategoryId])
   @@index([status])
+  @@index([source])
   @@index([city])
   @@index([joiningDate])
 }
@@ -470,18 +532,68 @@ model RequirementCandidate {
   notifiedAt    DateTime?
   interestedAt  DateTime?
   shortlistedAt DateTime?
+  offeredAt     DateTime?
+  acceptedAt    DateTime?
   assignedAt    DateTime?
   rejectedAt    DateTime?
   expiredAt     DateTime?
 
+  partnerId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  requirement   Requirement   @relation(fields: [requirementId], references: [id], onDelete: Cascade)
-  workerProfile WorkerProfile @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  requirement                    Requirement          @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  workerProfile                  WorkerProfile        @relation(fields: [workerProfileId], references: [id], onDelete: Cascade)
+  partner                        PartnerProfile?      @relation("PartnerRequirementCandidates", fields: [partnerId], references: [id])
+  replacementRequestsCurrent     ReplacementRequest[] @relation("CurrentAssignmentCandidate")
+  replacementRequestsReplacement ReplacementRequest[] @relation("ReplacementCandidate")
+  commissions                    PartnerCommission[]
 
   @@unique([requirementId, workerProfileId])
   @@index([requirementId, status])
   @@index([workerProfileId, status])
   @@index([requirementId, rank])
+  @@index([partnerId])
+}
+
+model ReplacementRequest {
+  id                           String                   @id @default(cuid())
+  requirementId                String
+  currentAssignmentCandidateId String
+  requestedById                String
+  reason                       String
+  status                       ReplacementRequestStatus @default(OPEN)
+  replacementCandidateId       String?
+  createdAt                    DateTime                 @default(now())
+  updatedAt                    DateTime                 @updatedAt
+
+  requirement                Requirement           @relation(fields: [requirementId], references: [id])
+  currentAssignmentCandidate RequirementCandidate  @relation("CurrentAssignmentCandidate", fields: [currentAssignmentCandidateId], references: [id])
+  requestedBy                User                  @relation("ReplacementRequester", fields: [requestedById], references: [id])
+  replacementCandidate       RequirementCandidate? @relation("ReplacementCandidate", fields: [replacementCandidateId], references: [id])
+
+  @@index([requirementId, status])
+  @@index([currentAssignmentCandidateId])
+  @@index([requestedById])
+  @@index([replacementCandidateId])
+}
+
+model PartnerCommission {
+  id            String                  @id @default(cuid())
+  partnerId     String
+  requirementId String
+  candidateId   String
+  amount        Float
+  status        PartnerCommissionStatus @default(PENDING)
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  partner     PartnerProfile       @relation(fields: [partnerId], references: [id])
+  requirement Requirement          @relation(fields: [requirementId], references: [id])
+  candidate   RequirementCandidate @relation(fields: [candidateId], references: [id])
+
+  @@index([partnerId, status])
+  @@index([requirementId])
+  @@index([candidateId])
 }

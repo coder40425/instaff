@@ -9,16 +9,23 @@ import {
   cancelRequirement,
   updateRequirement,
 } from "./requirement.service";
-import { updateRequirementSchema } from "./requirement.validation";
+import {
+  createRequirementSchema,
+  updateRequirementSchema,
+} from "./requirement.validation";
 
 export const createRequirementHandler = async (
   req: AuthRequest,
   res: Response
 ) => {
   try {
+    const data = createRequirementSchema.parse(
+      req.body
+    );
+
     const requirement = await createRequirement(
       req.user!.userId,
-      req.body
+      data
     );
 
     res.status(201).json({

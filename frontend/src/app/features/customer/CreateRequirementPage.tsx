@@ -4,6 +4,8 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate, useLocation } from 'react-router';
 import { toast } from 'sonner';
 import CustomerLayout from '../../layouts/CustomerLayout';
+import PartnerLayout from '../../layouts/PartnerLayout';
+import { useAuth } from '../../hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -21,6 +23,7 @@ import type {
   EmploymentType,
   WorkMode,
   WorkGeography,
+  ShiftTiming,
   AssignmentMode,
   Worker,
 } from '../../types';
@@ -49,7 +52,7 @@ interface RequirementForm {
   city: string;
   state?: string;
   address?: string;
-  shiftTiming?: string;
+  shiftTiming?: ShiftTiming;
   salaryBudget?: number;
   minExperience?: number;
   joiningDate: string;
@@ -74,6 +77,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function CreateRequirementPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+  const isPartner = user?.role === 'PARTNER';
+  const PageLayout = isPartner ? PartnerLayout : CustomerLayout;
   // Optional: customer may arrive here from a worker's profile with a
   // preferred worker already chosen (mirrors CreateBookingPage's pattern).
   const preferredWorker: Worker | undefined = location.state?.worker;
@@ -112,7 +118,7 @@ export default function CreateRequirementPage() {
     mutationFn: (payload: CreateRequirementPayload) => requirementService.create(payload),
     onSuccess: (requirement) => {
       toast.success('Requirement created successfully!');
-      navigate(`/customer/requirements/${requirement.id}`);
+      navigate(`${isPartner ? '/partner' : '/customer'}/requirements/${requirement.id}`);
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message || 'Failed to create requirement');
@@ -144,7 +150,7 @@ export default function CreateRequirementPage() {
   };
 
   return (
-    <CustomerLayout>
+    <PageLayout>
       <div className="max-w-2xl mx-auto space-y-6 px-1 sm:px-0">
         <div className="flex items-start gap-3">
           <div className="hidden sm:flex w-11 h-11 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 items-center justify-center flex-shrink-0">
@@ -249,8 +255,28 @@ export default function CreateRequirementPage() {
                 {errors.joiningDate && <p className="text-sm text-red-500">{errors.joiningDate.message}</p>}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="shiftTiming">Shift Timing</Label>
-                <Input id="shiftTiming" placeholder="e.g. 9am – 6pm" {...register('shiftTiming')} />
+                <Label>Shift Timing</Label>
+                <Controller
+                  name="shiftTiming"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value ?? ''}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Not specified" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DAY">Day</SelectItem>
+                        <SelectItem value="NIGHT">Night</SelectItem>
+                        <SelectItem value="LIVE_IN_24_HOURS">
+                          Live-in / 24 Hours
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="salaryBudget" className="flex items-center gap-1.5">
@@ -406,6 +432,6 @@ export default function CreateRequirementPage() {
           </div>
         </form>
       </div>
-    </CustomerLayout>
+    </PageLayout>
   );
 }

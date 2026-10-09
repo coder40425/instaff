@@ -10,6 +10,8 @@ import type {
   RequirementCandidate,
   Category,
   PublicWorkerProfile,
+  WorkerRequirementOffer,
+  WorkerRequirementOfferActionResult,
   // CRM
   CrmOverview,
   CrmRequirementFilters,
@@ -17,6 +19,7 @@ import type {
   CrmRequirementPipeline,
   CrmRequirementListItem,
 } from '../types';
+import type { AdminPartnerProfile } from '../types/partner';
 
 const API_BASE =
   ((import.meta as any).env?.VITE_API_URL as string) ||
@@ -177,6 +180,29 @@ export const workerService = {
 
     return response.data.data;
   },
+
+  getRequirementOffers: async (): Promise<WorkerRequirementOffer[]> => {
+    const response = await api.get('/worker/requirements/offers');
+    return response.data.data;
+  },
+
+  acceptRequirementOffer: async (
+    candidateId: string
+  ): Promise<WorkerRequirementOfferActionResult> => {
+    const response = await api.post(
+      `/worker/requirements/offers/${candidateId}/accept`
+    );
+    return response.data.data;
+  },
+
+  rejectRequirementOffer: async (
+    candidateId: string
+  ): Promise<WorkerRequirementOfferActionResult> => {
+    const response = await api.post(
+      `/worker/requirements/offers/${candidateId}/reject`
+    );
+    return response.data.data;
+  },
 };
 
 
@@ -248,6 +274,12 @@ export const complaintService = {
 
 export const adminService = {
   getAnalytics:      async () => { const r = await api.get('/admin/analytics');       return r.data.data; },
+  getPendingPartners: async (): Promise<AdminPartnerProfile[]> => { const r = await api.get('/admin/partners/pending'); return r.data.data; },
+  getAllPartners:    async (): Promise<AdminPartnerProfile[]> => { const r = await api.get('/admin/partners'); return r.data.data; },
+  approvePartner:    async (id: string) => { const r = await api.patch(`/admin/partners/${id}/approve`); return r.data.data; },
+  rejectPartner:     async (id: string) => { const r = await api.patch(`/admin/partners/${id}/reject`); return r.data.data; },
+  suspendPartner:    async (id: string) => { const r = await api.patch(`/admin/partners/${id}/suspend`); return r.data.data; },
+  reactivatePartner: async (id: string) => { const r = await api.patch(`/admin/partners/${id}/reactivate`); return r.data.data; },
   // Admin-only: sees pending/rejected workers awaiting verification.
   getPendingWorkers: async () => { const r = await api.get('/admin/workers/pending'); return r.data.data; },
   // IMPORTANT: these routes take the USER id, not the worker profile id. Do not change.
@@ -418,8 +450,8 @@ export const matchingService = {
     return response.data.data;
   },
 
-  // Assign a candidate worker — takes workerProfileId, NOT userId
-  assignWorker: async (
+  // Send the existing assignment offer; takes workerProfileId, NOT userId
+  sendAssignmentOffer: async (
     requirementId: string,
     workerProfileId: string
   ): Promise<RequirementCandidate> => {
@@ -521,8 +553,8 @@ export const crmService = {
     return response.data.data ?? [];
   },
 
-  // Assign worker using workerProfileId
-  assignWorker: async (
+  // Send the existing CRM assignment offer using workerProfileId
+  sendAssignmentOffer: async (
     requirementId: string,
     workerProfileId: string
   ): Promise<RequirementCandidate> => {

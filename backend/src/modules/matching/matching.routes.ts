@@ -16,6 +16,7 @@ router.use(
   authorizeRoles(
     "CUSTOMER",
     "EMPLOYER",
+    "PARTNER",
     "ADMIN"
   )
 );

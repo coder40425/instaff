@@ -30,6 +30,12 @@ const assignmentModeEnum = z.enum([
   "BULK_WORKFORCE",
 ]);
 
+const shiftTimingEnum = z.enum([
+  "DAY",
+  "NIGHT",
+  "LIVE_IN_24_HOURS",
+]);
+
 // ── Create ────────────────────────────────────────────────────────────────────
 
 export const createRequirementSchema = z.object({
@@ -53,9 +59,7 @@ export const createRequirementSchema = z.object({
     .string()
     .optional(),
 
-  shiftTiming: z
-    .string()
-    .optional(),
+  shiftTiming: shiftTimingEnum.optional(),
 
   salaryBudget: z
     .number()

@@ -13,10 +13,12 @@ import app from "../app";
 import requirementRoutes from "../modules/requirement/requirement.routes";
 import matchingRoutes from "../modules/matching/matching.routes";
 import crmRoutes from "../modules/crm/crm.routes";
+import partnerRoutes from "../modules/partner/partner.routes";
 
 const router = express.Router();
 
 router.use("/auth", authRoutes);
+router.use("/partner", partnerRoutes);
 router.use("/test", testRoutes);
 router.use("/worker", workerRoutes);
 router.use(

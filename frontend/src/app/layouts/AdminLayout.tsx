@@ -2,13 +2,14 @@ import { Link, useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
 import { ThemeToggle } from '../components/ThemeToggle';
-import { BarChart3, Users, Calendar, MessageSquare, CheckSquare, LogOut, Menu, X, ChevronRight, Briefcase, ClipboardList } from 'lucide-react';
+import { BarChart3, Users, Calendar, MessageSquare, CheckSquare, LogOut, Menu, X, ChevronRight, Briefcase, ClipboardList, UserCheck } from 'lucide-react';
 import { useState } from 'react';
 
 const navItems = [
   { path: '/admin', icon: BarChart3, label: 'Dashboard' },
   { path: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
   { path: '/admin/workers/pending', icon: CheckSquare, label: 'Pending Workers' },
+  { path: '/admin/partners', icon: UserCheck, label: 'Partner verification' },
   { path: '/admin/workers', icon: Users, label: 'Worker Management' },
   { path: '/admin/bookings', icon: Calendar, label: 'Bookings' },
   { path: '/admin/complaints', icon: MessageSquare, label: 'Complaints' },
