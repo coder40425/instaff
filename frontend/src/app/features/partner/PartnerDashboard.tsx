@@ -168,9 +168,19 @@ export default function PartnerDashboard() {
                     </section>
 
                     <section className="space-y-3" aria-labelledby="assignment-overview-heading">
-                      <div>
-                        <h2 id="assignment-overview-heading" className="text-lg font-semibold">Assignment overview</h2>
-                        <p className="text-sm text-neutral-500">Counts from requirements created by your Partner account.</p>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                          <h2 id="assignment-overview-heading" className="text-lg font-semibold">Assignment overview</h2>
+                          <p className="text-sm text-neutral-500">Counts from requirements created by your Partner account.</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button asChild variant="outline" size="sm">
+                            <Link to="/partner/assignments">View assignments <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                          </Button>
+                          <Button asChild variant="outline" size="sm">
+                            <Link to="/partner/assignments#replacement-requests">Track replacements <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                          </Button>
+                        </div>
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                         <MetricCard title="Open requirements" value={summaryQuery.data.assignments.openRequirements} icon={ClipboardList} detail="Open or matching" />

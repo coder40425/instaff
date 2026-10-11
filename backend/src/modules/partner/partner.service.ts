@@ -164,7 +164,7 @@ export const getPartnerDashboardSummary = async (
         status: "OFFERED",
         requirement: {
           ...requirementOwner,
-          status: { in: ["OPEN", "MATCHING"] },
+          status: { in: [...ACTIVE_REQUIREMENT_STATUSES] },
         },
         replacementRequestsReplacement: { none: { status: "CANCELLED" } },
       },
