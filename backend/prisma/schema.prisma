@@ -253,6 +253,8 @@ model Booking {
   startedAt             DateTime?
   completedAt           DateTime?
   cancelledAt           DateTime?
+  cancellationReason    String?
+  cancelledBy           Role?
   workerPayout          Float?        @default(0)
   platformFee           Float?        @default(0)
   isPaidToWorker        Boolean       @default(false)

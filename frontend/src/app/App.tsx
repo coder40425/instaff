@@ -25,6 +25,9 @@ import WorkerProfile from './features/worker/WorkerProfile';
 import WorkerBookings from './features/worker/WorkerBookings';
 import WorkerLocation from './features/worker/WorkerLocation';
 import WorkerEarnings from './features/worker/WorkerEarnings';
+import WorkerRequirements from './features/worker/WorkerRequirements';
+import WorkerPartners from './features/worker/WorkerPartners';
+import WorkerPartnerProfile from './features/worker/WorkerPartnerProfile';
 
 import AdminDashboard from './features/admin/AdminDashboard';
 import PartnerVerification from './features/admin/PartnerVerification';
@@ -158,6 +161,9 @@ function AppRoutes() {
       <Route path="/worker" element={<ProtectedRoute allowedRoles={['WORKER']}><WorkerDashboard /></ProtectedRoute>} />
       <Route path="/worker/profile" element={<ProtectedRoute allowedRoles={['WORKER']}><WorkerProfile /></ProtectedRoute>} />
       <Route path="/worker/bookings" element={<ProtectedRoute allowedRoles={['WORKER']}><WorkerBookings /></ProtectedRoute>} />
+      <Route path="/worker/requirements" element={<ProtectedRoute allowedRoles={['WORKER']}><WorkerRequirements /></ProtectedRoute>} />
+      <Route path="/worker/partners" element={<ProtectedRoute allowedRoles={['WORKER']}><WorkerPartners /></ProtectedRoute>} />
+      <Route path="/worker/partners/profile" element={<ProtectedRoute allowedRoles={['WORKER']}><WorkerPartnerProfile /></ProtectedRoute>} />
       <Route path="/worker/location" element={<ProtectedRoute allowedRoles={['WORKER']}><WorkerLocation /></ProtectedRoute>} />
       <Route path="/worker/earnings" element={<ProtectedRoute allowedRoles={['WORKER']}><WorkerEarnings /></ProtectedRoute>} />
 

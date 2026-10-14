@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AlertCircle, CheckCircle2, MapPin, Search, SearchX, UserPlus, UserRound, UsersRound, X,
+  AlertCircle, CheckCircle2, MapPin, RefreshCw, Search, SearchX, UserPlus, UserRound, UsersRound, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import PartnerLayout from '../../layouts/PartnerLayout';
@@ -19,14 +19,16 @@ import { Input } from '../../components/ui/input';
 import { categoryService, workerService } from '../../services/api';
 import { partnerService } from '../../services/partnerApi';
 import type { PublicWorkerProfile, WorkerDirectoryFilters } from '../../types';
-import { PartnerStatusBadge } from '../../components/ui/partner/PartnerStatusBadge';
+import { PartnerStatusBadge, PartnerWorkerStatusBadge } from '../../components/ui/partner/PartnerStatusBadge';
+import type { PartnerAssociatedWorker, PartnerWorkerOperationalStatus } from '../../types/partner';
 
 const PAGE_SIZE = 20;
 type Tab = 'discovery' | 'workforce';
 type RowMode = 'discover' | 'workforce';
+type WorkforceStatusFilter = 'all' | 'VERIFICATION_PENDING' | PartnerWorkerOperationalStatus;
 
 // Shared desktop column template so the header and every row line up.
-const ROW_GRID = 'xl:grid-cols-[minmax(0,2fr)_minmax(0,1.6fr)_5.5rem_minmax(0,1.3fr)_6.5rem_15rem]';
+const ROW_GRID = 'xl:grid-cols-[minmax(0,2fr)_minmax(0,1.6fr)_5.5rem_minmax(0,1.3fr)_minmax(10rem,1.2fr)_15rem]';
 const SELECT_CLASS =
   'h-9 w-full rounded-md border border-neutral-200 bg-background px-2.5 text-sm text-foreground disabled:opacity-50 dark:border-neutral-700';
 
@@ -52,6 +54,7 @@ export default function PartnerWorkers() {
   const [city, setCity] = useState('');
   const [availability, setAvailability] = useState<'all' | 'available' | 'unavailable'>('all');
   const [workforceSearch, setWorkforceSearch] = useState('');
+  const [workforceStatus, setWorkforceStatus] = useState<WorkforceStatusFilter>('all');
   const [discoveryShown, setDiscoveryShown] = useState(PAGE_SIZE);
   const [workforceShown, setWorkforceShown] = useState(PAGE_SIZE);
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
@@ -65,7 +68,7 @@ export default function PartnerWorkers() {
 
   // Start from the first page whenever the result set changes.
   useEffect(() => { setDiscoveryShown(PAGE_SIZE); }, [search, categoryId, subCategoryId, city, availability]);
-  useEffect(() => { setWorkforceShown(PAGE_SIZE); }, [workforceSearch]);
+  useEffect(() => { setWorkforceShown(PAGE_SIZE); }, [workforceSearch, workforceStatus]);
 
   const profileQuery = useQuery({ queryKey: ['partner-profile'], queryFn: partnerService.getProfile });
   const approved = profileQuery.data?.status === 'APPROVED';
@@ -103,6 +106,7 @@ export default function PartnerWorkers() {
   const refreshAssociationViews = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: ['partner-workers'] }),
     queryClient.invalidateQueries({ queryKey: ['partner-profile'] }),
+    queryClient.invalidateQueries({ queryKey: ['partner-dashboard-summary'] }),
     queryClient.invalidateQueries({ queryKey: ['partner-worker-discovery'] }),
   ]);
   const addMutation = useMutation({
@@ -143,13 +147,16 @@ export default function PartnerWorkers() {
   const associatedIds = new Set(associatedWorkers.map((worker) => worker.id));
   const workforceTerm = workforceSearch.trim().toLowerCase();
   const matchingWorkers = associatedWorkers.filter((worker) => {
-    if (!workforceTerm) return true;
     const text = [
       worker.user?.name, worker.city, worker.state,
       ...worker.skills.map((skill) => skill.subCategory.name),
       ...worker.skills.map((skill) => skill.subCategory.category?.name),
     ].filter(Boolean).join(' ').toLowerCase();
-    return text.includes(workforceTerm);
+    const matchesSearch = !workforceTerm || text.includes(workforceTerm);
+    const matchesStatus = workforceStatus === 'all'
+      || (workforceStatus === 'VERIFICATION_PENDING' && !worker.isVerified)
+      || (workforceStatus !== 'VERIFICATION_PENDING' && worker.operationalStatus === workforceStatus);
+    return matchesSearch && matchesStatus;
   });
 
   // Discovery = verified workers NOT already associated. Category / work type are also
@@ -164,9 +171,20 @@ export default function PartnerWorkers() {
   const shownWorkforce = matchingWorkers.slice(0, workforceShown);
 
   const detailWorker = detailQuery.data ?? null;
+  const detailAssociatedWorker = detailWorker
+    ? associatedWorkers.find((worker) => worker.id === detailWorker.id)
+    : undefined;
   const detailCategories = detailWorker ? unique(detailWorker.skills.map((skill) => skill.subCategory.category?.name)) : [];
   const detailWorkTypes = detailWorker ? unique(detailWorker.skills.map((skill) => skill.subCategory.name)) : [];
   const detailAssociated = !!detailWorker && associatedIds.has(detailWorker.id);
+  const detailStatus = detailAssociatedWorker
+    ? detailAssociatedWorker.operationalStatus
+    : detailWorker?.isVerified
+      ? detailWorker.isAvailable ? 'AVAILABLE' : 'OFFLINE'
+      : null;
+  const detailStatusLabel = detailStatus
+    ? ({ AVAILABLE: 'Available', BUSY: 'Busy', ON_DUTY: 'On Duty', OFFLINE: 'Offline', SUSPENDED: 'Suspended' } as const)[detailStatus]
+    : detailWorker?.isVerified ? 'Status unavailable' : 'Verification pending';
   const hasFilters = !!searchInput.trim() || !!categoryId || !!subCategoryId || !!city.trim() || availability !== 'all';
 
   const clearFilters = () => {
@@ -196,7 +214,7 @@ export default function PartnerWorkers() {
     </ul>
   );
 
-  const renderRow = (worker: PublicWorkerProfile, mode: RowMode) => {
+  const renderRow = (worker: PublicWorkerProfile | PartnerAssociatedWorker, mode: RowMode) => {
     const groups = unique(worker.skills.map((skill) => skill.subCategory.category?.name));
     const workTypes = unique(worker.skills.map((skill) => skill.subCategory.name));
     const location = locationOf(worker);
@@ -209,7 +227,7 @@ export default function PartnerWorkers() {
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <p className="truncate text-sm font-semibold">{worker.user?.name || 'NearPassway worker'}</p>
-              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" aria-label="Verified" />
+              {worker.isVerified && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" aria-label="Verified" />}
             </div>
             <p className="truncate text-xs text-neutral-500 dark:text-neutral-400 xl:hidden">{workTypeText || groups[0] || 'No public work type listed'}</p>
           </div>
@@ -225,10 +243,21 @@ export default function PartnerWorkers() {
           <span className="inline-flex min-w-0 items-center gap-1 xl:truncate">
             {location ? <><MapPin className="h-3 w-3 shrink-0 xl:hidden" /><span className="truncate">{location}</span></> : <span className="text-neutral-400">—</span>}
           </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className={'h-1.5 w-1.5 rounded-full ' + (worker.isAvailable ? 'bg-green-500' : 'bg-neutral-400')} />
-            {worker.isAvailable ? 'Available' : 'Unavailable'}
-          </span>
+          {mode === 'workforce' ? (
+            <span className="flex flex-wrap items-center gap-1.5 xl:justify-center">
+              <Badge variant="outline" className={worker.isVerified
+                ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300'
+                : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300'}>
+                {worker.isVerified ? 'Verified' : 'Verification pending'}
+              </Badge>
+              <PartnerWorkerStatusBadge status={(worker as PartnerAssociatedWorker).operationalStatus} />
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5">
+              <span className={'h-1.5 w-1.5 rounded-full ' + (worker.isAvailable ? 'bg-green-500' : 'bg-neutral-400')} />
+              {worker.isAvailable ? 'Available' : 'Unavailable'}
+            </span>
+          )}
         </div>
 
         <div className="flex gap-2 xl:justify-end">
@@ -411,9 +440,28 @@ export default function PartnerWorkers() {
                     <h2 className="text-lg font-semibold">My Workforce</h2>
                     <p className="text-sm text-neutral-500">{associatedWorkers.length} associated worker{associatedWorkers.length === 1 ? '' : 's'}</p>
                   </div>
-                  <div className="relative w-full sm:w-80">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-                    <Input value={workforceSearch} onChange={(event) => setWorkforceSearch(event.target.value)} placeholder="Search your workforce" className="pl-9" aria-label="Search associated workers" />
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <div className="relative w-full sm:w-64">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                      <Input value={workforceSearch} onChange={(event) => setWorkforceSearch(event.target.value)} placeholder="Search your workforce" className="pl-9" aria-label="Search associated workers" />
+                    </div>
+                    <select
+                      aria-label="Filter workforce by status"
+                      value={workforceStatus}
+                      onChange={(event) => setWorkforceStatus(event.target.value as WorkforceStatusFilter)}
+                      className={SELECT_CLASS + ' sm:w-52'}
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="VERIFICATION_PENDING">Verification pending</option>
+                      <option value="AVAILABLE">Available</option>
+                      <option value="BUSY">Busy</option>
+                      <option value="ON_DUTY">On Duty</option>
+                      <option value="OFFLINE">Offline</option>
+                      <option value="SUSPENDED">Suspended</option>
+                    </select>
+                    <Button variant="outline" size="sm" className="h-9" onClick={() => workersQuery.refetch()} disabled={workersQuery.isFetching}>
+                      <RefreshCw className={'mr-1.5 h-4 w-4 ' + (workersQuery.isFetching ? 'animate-spin' : '')} />Refresh
+                    </Button>
                   </div>
                 </div>
 
@@ -453,14 +501,20 @@ export default function PartnerWorkers() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="break-words text-xl font-semibold">{detailWorker.user?.name || 'NearPassway worker'}</h2>
-                      <Badge variant="outline" className="border-green-200 text-green-700 dark:border-green-900 dark:text-green-300"><CheckCircle2 className="mr-1 h-3 w-3" />Verified</Badge>
+                      <Badge variant="outline" className={detailWorker.isVerified
+                        ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300'
+                        : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300'}>
+                        {detailWorker.isVerified ? <CheckCircle2 className="mr-1 h-3 w-3" /> : null}
+                        {detailWorker.isVerified ? 'Verified' : 'Verification pending'}
+                      </Badge>
+                      <PartnerWorkerStatusBadge status={detailStatus} />
                     </div>
                     <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
                       {[detailWorkTypes[0], detailWorker.experience + ' ' + (detailWorker.experience === 1 ? 'year' : 'years') + ' experience'].filter(Boolean).join(' · ')}
                     </p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-neutral-500">
                       {locationOf(detailWorker) && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{locationOf(detailWorker)}</span>}
-                      <span className="inline-flex items-center gap-1.5"><span className={'h-1.5 w-1.5 rounded-full ' + (detailWorker.isAvailable ? 'bg-green-500' : 'bg-neutral-400')} />{detailWorker.isAvailable ? 'Available' : 'Unavailable'}</span>
+                      <span>Operational status: {detailStatusLabel}</span>
                     </p>
                   </div>
                 </div>
@@ -488,7 +542,7 @@ export default function PartnerWorkers() {
                     <h3 className="mb-2 text-sm font-semibold">Availability & service area</h3>
                     <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
                       {locationOf(detailWorker) && <div><dt className="text-xs text-neutral-500">Service area</dt><dd className="text-sm font-medium">{locationOf(detailWorker)}</dd></div>}
-                      <div><dt className="text-xs text-neutral-500">Status</dt><dd className="text-sm font-medium">{detailWorker.isAvailable ? 'Available' : 'Unavailable'}</dd></div>
+                      <div><dt className="text-xs text-neutral-500">Operational status</dt><dd className="text-sm font-medium">{detailStatusLabel}</dd></div>
                       {detailWorker.gender && <div><dt className="text-xs text-neutral-500">Gender</dt><dd className="text-sm font-medium">{formatLabel(detailWorker.gender)}</dd></div>}
                       {detailWorker.rating > 0 && <div><dt className="text-xs text-neutral-500">Rating</dt><dd className="text-sm font-medium">{detailWorker.rating.toFixed(1)} ({detailWorker.totalReviews} reviews)</dd></div>}
                       {!!detailWorker.languagesKnown?.length && <div><dt className="text-xs text-neutral-500">Languages</dt><dd className="text-sm font-medium">{detailWorker.languagesKnown.join(', ')}</dd></div>}

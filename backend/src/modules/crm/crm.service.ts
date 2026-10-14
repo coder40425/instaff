@@ -178,6 +178,10 @@ const crmCandidateSelect = {
   workerProfile: {
     select: customerWorkerSelect,
   },
+
+  replacementRequestsCurrent: {
+    select: { status: true },
+  },
 } satisfies Prisma.RequirementCandidateSelect;
 
 /* =========================================================
@@ -253,6 +257,39 @@ const crmRequirementDetailSelect = {
       },
     ],
   },
+
+  replacementRequests: {
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      requirementId: true,
+      currentAssignmentCandidateId: true,
+      requestedById: true,
+      reason: true,
+      status: true,
+      replacementCandidateId: true,
+      createdAt: true,
+      updatedAt: true,
+      requestedBy: { select: { id: true, name: true, role: true } },
+      currentAssignmentCandidate: {
+        select: {
+          id: true,
+          workerProfile: {
+            select: { id: true, user: { select: { name: true } } },
+          },
+        },
+      },
+      replacementCandidate: {
+        select: {
+          id: true,
+          status: true,
+          workerProfile: {
+            select: { id: true, user: { select: { name: true } } },
+          },
+        },
+      },
+    },
+  },
 } satisfies Prisma.RequirementSelect;
 
 /* =========================================================
@@ -262,7 +299,9 @@ const crmRequirementDetailSelect = {
 const buildPipeline = (
   candidates: Array<{
     status: RequirementCandidateStatus;
-  }>
+    replacementRequestsCurrent?: Array<{ status: string }>;
+  }>,
+  requirementStatus?: RequirementStatus
 ) => {
   const pipeline = {
     recommended: 0,
@@ -276,6 +315,25 @@ const buildPipeline = (
   };
 
   for (const candidate of candidates) {
+    if (
+      candidate.status === RequirementCandidateStatus.ASSIGNED &&
+      requirementStatus &&
+      requirementStatus !== RequirementStatus.OPEN &&
+      requirementStatus !== RequirementStatus.MATCHING &&
+      requirementStatus !== RequirementStatus.FILLED
+    ) {
+      continue;
+    }
+
+    if (
+      candidate.status === RequirementCandidateStatus.ASSIGNED &&
+      candidate.replacementRequestsCurrent?.some(
+        (request) => request.status === "RESOLVED"
+      )
+    ) {
+      continue;
+    }
+
     switch (candidate.status) {
       case RequirementCandidateStatus.RECOMMENDED:
         pipeline.recommended++;
@@ -387,6 +445,9 @@ export const getCrmOverview = async () => {
       where: {
         status:
           RequirementCandidateStatus.OFFERED,
+        requirement: {
+          status: { in: [RequirementStatus.OPEN, RequirementStatus.MATCHING, RequirementStatus.FILLED] },
+        },
       },
     }),
 
@@ -394,6 +455,10 @@ export const getCrmOverview = async () => {
       where: {
         status:
           RequirementCandidateStatus.ASSIGNED,
+        replacementRequestsCurrent: { none: { status: "RESOLVED" } },
+        requirement: {
+          status: { in: [RequirementStatus.OPEN, RequirementStatus.MATCHING, RequirementStatus.FILLED] },
+        },
       },
     }),
 
@@ -435,6 +500,7 @@ export const getCrmOverview = async () => {
           where: {
             status:
               RequirementCandidateStatus.ASSIGNED,
+            replacementRequestsCurrent: { none: { status: "RESOLVED" } },
           },
 
           select: {
@@ -608,6 +674,10 @@ export const getRecentCrmAssignments =
       where: {
         status:
           RequirementCandidateStatus.ASSIGNED,
+        replacementRequestsCurrent: { none: { status: "RESOLVED" } },
+        requirement: {
+          status: { in: ["OPEN", "MATCHING", "FILLED"] },
+        },
       },
 
       select: {
@@ -785,9 +855,7 @@ export const getCrmRequirementById =
       );
     }
 
-    const pipeline = buildPipeline(
-      requirement.candidates
-    );
+    const pipeline = buildPipeline(requirement.candidates, requirement.status);
 
     return {
       ...requirement,
@@ -841,6 +909,9 @@ export const getCrmRequirementPipeline =
           candidates: {
             select: {
               status: true,
+              replacementRequestsCurrent: {
+                select: { status: true },
+              },
             },
           },
         },
@@ -852,9 +923,7 @@ export const getCrmRequirementPipeline =
       );
     }
 
-    const pipeline = buildPipeline(
-      requirement.candidates
-    );
+    const pipeline = buildPipeline(requirement.candidates, requirement.status);
 
     return {
       requirementId:

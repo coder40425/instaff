@@ -1,4 +1,9 @@
 import prisma from "../../config/prisma";
+import { releaseWorkerAvailabilityIfIdle } from "../matching/assignment.service";
+import {
+  cancelBookingWithRole,
+  includeBookingCancellationMetadata,
+} from "./cancellation.service";
 
 // ── Wallet credit helper ──────────────────────────────────────────────────────
 // Called ONLY when worker confirms "Payment Received" — not on completion.
@@ -82,7 +87,7 @@ export const createBooking = async (customerId: string, data: any) => {
 };
 
 export const getCustomerBookings = async (customerId: string) => {
-  return prisma.booking.findMany({
+  const bookings = await prisma.booking.findMany({
     where: { customerId },
     include: {
       subCategory: { include: { category: true } },
@@ -90,10 +95,11 @@ export const getCustomerBookings = async (customerId: string) => {
     },
     orderBy: { createdAt: "desc" },
   });
+  return bookings.map(includeBookingCancellationMetadata);
 };
 
 export const getWorkerBookings = async (workerId: string) => {
-  return prisma.booking.findMany({
+  const bookings = await prisma.booking.findMany({
     where: { workerId },
     include: {
       subCategory: { include: { category: true } },
@@ -101,6 +107,7 @@ export const getWorkerBookings = async (workerId: string) => {
     },
     orderBy: { createdAt: "desc" },
   });
+  return bookings.map(includeBookingCancellationMetadata);
 };
 
 export const getBookingById = async (bookingId: string) => {
@@ -109,7 +116,7 @@ export const getBookingById = async (bookingId: string) => {
     include: { subCategory: { include: { category: true } } },
   });
   if (!booking) throw new Error("Booking not found");
-  return booking;
+  return includeBookingCancellationMetadata(booking);
 };
 
 export const acceptBooking = async (bookingId: string, workerId: string) => {
@@ -123,16 +130,52 @@ export const acceptBooking = async (bookingId: string, workerId: string) => {
   if (!workerProfile.isVerified)   throw new Error("Worker not verified");
   if (workerProfile.isSuspended)   throw new Error("Worker suspended");
 
-  const activeBooking = await prisma.booking.findFirst({
-    where: { workerId, status: { in: ["ACCEPTED", "IN_PROGRESS"] } },
-  });
-  if (activeBooking) throw new Error("Worker already has an active booking");
+  return prisma.$transaction(async (tx) => {
+    const availabilityClaim = await tx.workerProfile.updateMany({
+      where: {
+        id: workerProfile.id,
+        isAvailable: true,
+        isVerified: true,
+        isSuspended: false,
+      },
+      data: { isAvailable: false },
+    });
+    if (availabilityClaim.count !== 1) {
+      throw new Error("Worker unavailable");
+    }
 
-  await prisma.workerProfile.update({ where: { userId: workerId }, data: { isAvailable: false } });
+    const [activeBooking, activeRequirementAssignment] = await Promise.all([
+      tx.booking.findFirst({
+        where: {
+          workerId,
+          id: { not: bookingId },
+          status: { in: ["ACCEPTED", "IN_PROGRESS"] },
+        },
+        select: { id: true },
+      }),
+      tx.requirementCandidate.findFirst({
+        where: {
+          workerProfileId: workerProfile.id,
+          status: "ASSIGNED",
+          replacementRequestsCurrent: { none: { status: "RESOLVED" } },
+          requirement: { status: { in: ["OPEN", "MATCHING", "FILLED"] } },
+        },
+        select: { id: true },
+      }),
+    ]);
+    if (activeBooking || activeRequirementAssignment) {
+      throw new Error("Worker already has an active assignment");
+    }
 
-  return prisma.booking.update({
-    where: { id: bookingId },
-    data:  { status: "ACCEPTED", acceptedAt: new Date() },
+    const accepted = await tx.booking.updateMany({
+      where: { id: bookingId, workerId, status: "PENDING" },
+      data: { status: "ACCEPTED", acceptedAt: new Date() },
+    });
+    if (accepted.count !== 1) {
+      throw new Error("Booking already processed");
+    }
+
+    return tx.booking.findUnique({ where: { id: bookingId } });
   });
 };
 
@@ -163,11 +206,24 @@ export const completeBooking = async (bookingId: string, customerId: string) => 
   if (booking.customerId !== customerId)  throw new Error("Only customer can complete booking");
   if (booking.status !== "IN_PROGRESS")  throw new Error("Booking must be IN_PROGRESS");
 
-  await prisma.workerProfile.update({ where: { userId: booking.workerId }, data: { isAvailable: true } });
-
-  return prisma.booking.update({
-    where: { id: bookingId },
-    data:  { status: "COMPLETED", completedAt: new Date(), completedByCustomer: true },
+  return prisma.$transaction(async (tx) => {
+    const completed = await tx.booking.updateMany({
+      where: {
+        id: bookingId,
+        customerId,
+        status: "IN_PROGRESS",
+      },
+      data: {
+        status: "COMPLETED",
+        completedAt: new Date(),
+        completedByCustomer: true,
+      },
+    });
+    if (completed.count !== 1) {
+      throw new Error("Booking must be IN_PROGRESS");
+    }
+    await releaseWorkerAvailabilityIfIdle(tx, booking.workerId);
+    return tx.booking.findUnique({ where: { id: bookingId } });
   });
   // NOTE: wallet is NOT credited here — worker must confirm payment received
 };
@@ -196,21 +252,27 @@ export const confirmPaymentReceived = async (bookingId: string, workerId: string
   return updated;
 };
 
-export const cancelBooking = async (bookingId: string, customerId: string) => {
-  const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
-  if (!booking)                          throw new Error("Booking not found");
-  if (booking.customerId !== customerId)  throw new Error("Unauthorized");
-  if (booking.status === "COMPLETED" || booking.status === "CANCELLED") {
-    throw new Error("Booking already closed");
-  }
+export const cancelBooking = (
+  bookingId: string,
+  customerId: string,
+  reason: unknown
+) =>
+  cancelBookingWithRole(
+    bookingId,
+    { role: "CUSTOMER", userId: customerId },
+    reason
+  );
 
-  await prisma.workerProfile.update({ where: { userId: booking.workerId }, data: { isAvailable: true } });
-
-  return prisma.booking.update({
-    where: { id: bookingId },
-    data:  { status: "CANCELLED", cancelledAt: new Date() },
-  });
-};
+export const cancelWorkerBooking = (
+  bookingId: string,
+  workerId: string,
+  reason: unknown
+) =>
+  cancelBookingWithRole(
+    bookingId,
+    { role: "WORKER", userId: workerId },
+    reason
+  );
 
 export const markBookingPaid = async (bookingId: string, customerId: string, paymentMethod: string) => {
   const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
@@ -277,8 +339,15 @@ export const markNoShow = async (bookingId: string, customerId: string) => {
   const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
   if (!booking)                          throw new Error("Booking not found");
   if (booking.customerId !== customerId)  throw new Error("Unauthorized");
+  if (booking.status !== "ACCEPTED") throw new Error("Only accepted bookings can be marked no-show");
 
-  await prisma.workerProfile.update({ where: { userId: booking.workerId }, data: { isAvailable: true } });
-
-  return prisma.booking.update({ where: { id: bookingId }, data: { status: "NO_SHOW" } });
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.booking.updateMany({
+      where: { id: bookingId, customerId, status: "ACCEPTED" },
+      data: { status: "NO_SHOW" },
+    });
+    if (updated.count !== 1) throw new Error("Only accepted bookings can be marked no-show");
+    await releaseWorkerAvailabilityIfIdle(tx, booking.workerId);
+    return tx.booking.findUnique({ where: { id: bookingId } });
+  });
 };

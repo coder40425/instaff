@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import BookingCancellationDialog from '../../components/BookingCancellationDialog';
+import BookingCancellationDetails from '../../components/BookingCancellationDetails';
 import { adminService } from '../../services/api';
 import { Calendar, MapPin, IndianRupee, RefreshCw, User, Phone, AlertTriangle, Tag, Hash } from 'lucide-react';
 
@@ -14,6 +16,7 @@ export default function BookingManagement() {
 
   // Reassign state
   const [reassignBookingId, setReassignBookingId] = useState<string | null>(null);
+  const [cancellationBooking, setCancellationBooking] = useState<any>(null);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
 
@@ -34,9 +37,11 @@ export default function BookingManagement() {
   });
 
   const forceCancelMutation = useMutation({
-    mutationFn: (id: string) => adminService.forceCancelBooking(id),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      adminService.forceCancelBooking(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+      setCancellationBooking(null);
       toast.success('Booking cancelled');
     },
     onError: (error: any) => {
@@ -75,6 +80,27 @@ export default function BookingManagement() {
   const handleCloseReassign = () => {
     setReassignBookingId(null);
     setCandidates([]);
+  };
+
+  const handleOpenCancellation = (booking: any) => {
+    setCancellationBooking(booking);
+  };
+
+  const handleConfirmCancellation = (reason: string) => {
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) {
+      toast.error('A cancellation reason is required');
+      return;
+    }
+    if (!cancellationBooking) {
+      toast.error('Select a booking to cancel');
+      return;
+    }
+
+    forceCancelMutation.mutate({
+      id: cancellationBooking.id,
+      reason: normalizedReason,
+    });
   };
 
   const getStatusBadge = (status: string) => {
@@ -197,6 +223,13 @@ export default function BookingManagement() {
                     </div>
                   )}
 
+                  <BookingCancellationDetails
+                    status={booking.status}
+                    cancelledAt={booking.cancelledAt}
+                    cancellationReason={booking.cancellationReason}
+                    cancelledBy={booking.cancelledBy}
+                  />
+
                   {/* Show replacement request info if flagged */}
                   {booking.replacementRequested && (
                     <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-lg">
@@ -237,7 +270,7 @@ export default function BookingManagement() {
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => forceCancelMutation.mutate(booking.id)}
+                          onClick={() => handleOpenCancellation(booking)}
                           disabled={forceCancelMutation.isPending}
                         >
                           Force Cancel
@@ -251,6 +284,17 @@ export default function BookingManagement() {
           </div>
         )}
       </div>
+
+      <BookingCancellationDialog
+        open={!!cancellationBooking}
+        title="Force Cancel Booking"
+        description="This will cancel the booking for both parties. Please provide an administrative reason."
+        isSubmitting={forceCancelMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setCancellationBooking(null);
+        }}
+        onConfirm={handleConfirmCancellation}
+      />
 
       {/* Reassign Worker Dialog */}
       <Dialog open={!!reassignBookingId} onOpenChange={(open) => { if (!open) handleCloseReassign(); }}>

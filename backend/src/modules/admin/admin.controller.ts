@@ -110,9 +110,9 @@ export const forceCompleteBookingHandler = async (req: AuthRequest, res: Respons
 
 export const forceCancelBookingHandler = async (req: AuthRequest, res: Response) => {
   try {
-    const booking = await forceCancelBooking(String(req.params.id));
+    const booking = await forceCancelBooking(String(req.params.id), req.body?.reason);
     res.json({ success: true, data: booking });
-  } catch (error: any) { res.status(400).json({ success: false, message: error.message }); }
+  } catch (error: any) { res.status(error.statusCode || 400).json({ success: false, message: error.message }); }
 };
 
 export const reassignBookingHandler = async (req: AuthRequest, res: Response) => {

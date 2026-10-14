@@ -8,10 +8,12 @@ import type {
   WorkerDirectoryFilters,
   Requirement,
   RequirementCandidate,
+  RequirementReplacementRequest,
   Category,
   PublicWorkerProfile,
   WorkerRequirementOffer,
   WorkerRequirementOfferActionResult,
+  WorkerPartnerAssociation,
   // CRM
   CrmOverview,
   CrmRequirementFilters,
@@ -186,6 +188,11 @@ export const workerService = {
     return response.data.data;
   },
 
+  getPartnerAssociation: async (): Promise<WorkerPartnerAssociation | null> => {
+    const response = await api.get('/worker/partner');
+    return response.data.data;
+  },
+
   acceptRequirementOffer: async (
     candidateId: string
   ): Promise<WorkerRequirementOfferActionResult> => {
@@ -227,7 +234,8 @@ export const bookingService = {
   rejectBooking:    async (id: string) => { const r = await api.patch(`/bookings/${id}/reject`);            return r.data; },
   startService:     async (id: string) => { const r = await api.patch(`/bookings/${id}/customer-start`);    return r.data; },
   completeService:  async (id: string) => { const r = await api.patch(`/bookings/${id}/customer-complete`); return r.data; },
-  cancelBooking:    async (id: string) => { const r = await api.patch(`/bookings/${id}/cancel`);            return r.data; },
+  cancelBooking:    async (id: string, reason: string) => { const r = await api.patch(`/bookings/${id}/cancel`, { reason }); return r.data; },
+  cancelWorkerBooking: async (id: string, reason: string) => { const r = await api.patch(`/bookings/worker/${id}/cancel`, { reason }); return r.data; },
   markNoShow:       async (id: string) => { const r = await api.patch(`/bookings/${id}/no-show`);           return r.data; },
   markPaid: async (id: string, paymentMethod: string) => {
     const r = await api.patch(`/bookings/${id}/pay`, { paymentMethod });
@@ -289,7 +297,7 @@ export const adminService = {
   reactivateWorker:  async (userId: string) => { const r = await api.patch(`/admin/workers/${userId}/reactivate`); return r.data; },
   getAllBookings:     async () => { const r = await api.get('/admin/bookings');        return r.data.data; },
   forceCompleteBooking: async (id: string) => { const r = await api.patch(`/admin/bookings/${id}/complete`); return r.data; },
-  forceCancelBooking:   async (id: string) => { const r = await api.patch(`/admin/bookings/${id}/cancel`);   return r.data; },
+  forceCancelBooking:   async (id: string, reason: string) => { const r = await api.patch(`/admin/bookings/${id}/cancel`, { reason }); return r.data; },
   getReplacementCandidates: async (bookingId: string) => {
     const r = await api.get(`/admin/bookings/${bookingId}/replacement-candidates`);
     return r.data.data;
@@ -453,15 +461,39 @@ export const matchingService = {
   // Send the existing assignment offer; takes workerProfileId, NOT userId
   sendAssignmentOffer: async (
     requirementId: string,
-    workerProfileId: string
+    workerProfileId: string,
+    replacementRequestId?: string
   ): Promise<RequirementCandidate> => {
     const response = await api.post(
       `/matching/requirements/${requirementId}/assign`,
       {
         workerProfileId,
+        ...(replacementRequestId ? { replacementRequestId } : {}),
       }
     );
 
+    return response.data.data;
+  },
+
+  requestAssignmentReplacement: async (
+    requirementId: string,
+    candidateId: string,
+    reason: string
+  ): Promise<RequirementReplacementRequest> => {
+    const response = await api.post(
+      `/matching/requirements/${requirementId}/candidates/${candidateId}/replacements`,
+      { reason }
+    );
+    return response.data.data;
+  },
+
+  cancelAssignmentReplacement: async (
+    requirementId: string,
+    replacementRequestId: string
+  ): Promise<RequirementReplacementRequest> => {
+    const response = await api.patch(
+      `/matching/requirements/${requirementId}/replacements/${replacementRequestId}/cancel`
+    );
     return response.data.data;
   },
 };

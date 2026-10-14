@@ -1,4 +1,9 @@
 import prisma from "../../config/prisma";
+import { releaseWorkerAvailabilityIfIdle } from "../matching/assignment.service";
+import {
+  cancelBookingWithRole,
+  includeBookingCancellationMetadata,
+} from "../booking/cancellation.service";
 
 const partnerAdminSelect = {
   id: true,
@@ -89,10 +94,11 @@ export const reactivateWorker = async (userId: string) => {
 };
 
 export const getAllBookings = async () => {
-  return prisma.booking.findMany({
+  const bookings = await prisma.booking.findMany({
     include: { subCategory: { include: { category: true } } },
     orderBy: { createdAt: "desc" },
   });
+  return bookings.map(includeBookingCancellationMetadata);
 };
 
 export const getAnalytics = async () => {
@@ -116,12 +122,18 @@ export const getAnalytics = async () => {
 };
 
 export const forceCompleteBooking = async (bookingId: string) => {
-  return prisma.booking.update({ where: { id: bookingId }, data: { status: "COMPLETED", completedAt: new Date() } });
+  return prisma.$transaction(async (tx) => {
+    const booking = await tx.booking.update({
+      where: { id: bookingId },
+      data: { status: "COMPLETED", completedAt: new Date() },
+    });
+    await releaseWorkerAvailabilityIfIdle(tx, booking.workerId);
+    return booking;
+  });
 };
 
-export const forceCancelBooking = async (bookingId: string) => {
-  return prisma.booking.update({ where: { id: bookingId }, data: { status: "CANCELLED", cancelledAt: new Date() } });
-};
+export const forceCancelBooking = (bookingId: string, reason: unknown) =>
+  cancelBookingWithRole(bookingId, { role: "ADMIN" }, reason);
 
 export const reassignBooking = async (
   bookingId: string,
@@ -170,6 +182,19 @@ export const reassignBooking = async (
     throw new Error("Worker unavailable");
   }
 
+  const activeRequirementAssignment = await prisma.requirementCandidate.findFirst({
+    where: {
+      workerProfileId: worker.id,
+      status: "ASSIGNED",
+      replacementRequestsCurrent: { none: { status: "RESOLVED" } },
+      requirement: { status: { in: ["OPEN", "MATCHING", "FILLED"] } },
+    },
+    select: { id: true },
+  });
+  if (activeRequirementAssignment) {
+    throw new Error("Worker already has an active assignment");
+  }
+
   // Worker must actually provide the required work type
   const hasRequiredSkill = worker.skills.some(
     (skill) => skill.subCategoryId === booking.subCategoryId
@@ -187,15 +212,27 @@ export const reassignBooking = async (
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    // If the old worker was assigned, make them available again
-    await tx.workerProfile.updateMany({
+    const lockedBooking = await tx.booking.findFirst({
       where: {
-        userId: booking.workerId,
+        id: bookingId,
+        status: { notIn: ["COMPLETED", "CANCELLED"] },
       },
-      data: {
-        isAvailable: true,
-      },
+      select: { id: true },
     });
+    if (!lockedBooking) throw new Error("Cannot assign a worker to a closed booking");
+
+    const activeRequirementAssignment = await tx.requirementCandidate.findFirst({
+      where: {
+        workerProfileId: worker.id,
+        status: "ASSIGNED",
+        replacementRequestsCurrent: { none: { status: "RESOLVED" } },
+        requirement: { status: { in: ["OPEN", "MATCHING", "FILLED"] } },
+      },
+      select: { id: true },
+    });
+    if (activeRequirementAssignment) {
+      throw new Error("Worker already has an active assignment");
+    }
 
     // Update booking
     const updatedBooking = await tx.booking.update({
@@ -222,6 +259,8 @@ export const reassignBooking = async (
         },
       },
     });
+
+    await releaseWorkerAvailabilityIfIdle(tx, booking.workerId);
 
     return updatedBooking;
   });

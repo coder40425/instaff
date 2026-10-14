@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import BookingCancellationDialog from '../../components/BookingCancellationDialog';
+import BookingCancellationDetails from '../../components/BookingCancellationDetails';
 import { bookingService, profileService } from '../../services/api';
 import { Calendar, MapPin, DollarSign, Star, Wallet, CheckCircle, QrCode } from 'lucide-react';
 
@@ -35,6 +37,7 @@ export default function WorkerBookings() {
 
   // Payment popup state
   const [paymentBooking, setPaymentBooking] = useState<any>(null);
+  const [cancellationBooking, setCancellationBooking] = useState<any>(null);
 
   const { data: bookings = [], isLoading } = useQuery({
     queryKey: ['worker-bookings'],
@@ -57,6 +60,19 @@ export default function WorkerBookings() {
     mutationFn: (id: string) => bookingService.rejectBooking(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['worker-bookings'] }); toast.success('Booking rejected'); },
     onError: (e: any) => toast.error(e.response?.data?.message || 'Failed to reject booking'),
+  });
+
+  const cancelBookingMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      bookingService.cancelWorkerBooking(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['worker-bookings'] });
+      setCancellationBooking(null);
+      toast.success('Booking cancelled');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Failed to cancel booking');
+    },
   });
 
   const confirmPaymentMutation = useMutation({
@@ -154,6 +170,13 @@ export default function WorkerBookings() {
                     </p>
                   )}
 
+                  <BookingCancellationDetails
+                    status={booking.status}
+                    cancelledAt={booking.cancelledAt}
+                    cancellationReason={booking.cancellationReason}
+                    cancelledBy={booking.cancelledBy}
+                  />
+
                   {/* ── Action buttons by status ─────────────────────────── */}
 
                   {booking.status === 'PENDING' && (
@@ -168,7 +191,17 @@ export default function WorkerBookings() {
                   )}
 
                   {booking.status === 'ACCEPTED' && (
-                    <p className="text-sm text-blue-600 dark:text-blue-400">Waiting for customer to start service</p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <p className="text-sm text-blue-600 dark:text-blue-400">Waiting for customer to start service</p>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => setCancellationBooking(booking)}
+                        disabled={cancelBookingMutation.isPending}
+                      >
+                        Cancel Booking
+                      </Button>
+                    </div>
                   )}
 
                   {booking.status === 'IN_PROGRESS' && (
@@ -222,6 +255,21 @@ export default function WorkerBookings() {
       </div>
 
       {/* ── Payment QR Popup ─────────────────────────────────────────────────── */}
+      <BookingCancellationDialog
+        open={!!cancellationBooking}
+        title="Cancel Booking"
+        description="You may cancel a booking after accepting it. The customer will be notified. Please provide a reason."
+        isSubmitting={cancelBookingMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setCancellationBooking(null);
+        }}
+        onConfirm={(reason) => {
+          if (cancellationBooking) {
+            cancelBookingMutation.mutate({ id: cancellationBooking.id, reason });
+          }
+        }}
+      />
+
       <Dialog open={!!paymentBooking} onOpenChange={(open) => { if (!open) setPaymentBooking(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

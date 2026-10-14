@@ -1,3 +1,5 @@
+import type { PublicWorkerProfile } from './index';
+
 export const PARTNER_TYPES = [
   'FREELANCER',
   'AGENT',
@@ -18,6 +20,34 @@ export interface PartnerProfile {
   workerLimit: number | null;
   workerCount: number;
   createdAt: string;
+}
+
+export type PartnerWorkerOperationalStatus =
+  | 'AVAILABLE'
+  | 'BUSY'
+  | 'ON_DUTY'
+  | 'OFFLINE'
+  | 'SUSPENDED';
+
+export interface PartnerAssociatedWorker extends PublicWorkerProfile {
+  operationalStatus: PartnerWorkerOperationalStatus | null;
+}
+
+export interface PartnerDashboardSummary {
+  workforce: {
+    total: number;
+    available: number;
+    busy: number;
+    onDuty: number;
+    verificationPending: number;
+  };
+  assignments: {
+    openRequirements: number;
+    pendingOffers: number;
+    confirmedAssignments: number;
+    upcomingAssignments: number;
+    openReplacementRequests: number;
+  };
 }
 
 export interface AdminPartnerProfile {

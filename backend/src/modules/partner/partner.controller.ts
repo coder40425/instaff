@@ -2,6 +2,7 @@ import { Response } from "express";
 import { PartnerRequest } from "../../middleware/partnerMiddleware";
 import {
   associateWorker,
+  getPartnerDashboardSummary,
   getOwnPartnerProfile,
   listAssociatedWorkers,
   removeAssociatedWorker,
@@ -32,6 +33,18 @@ export const associatedWorkers = async (req: PartnerRequest, res: Response) => {
   try {
     const workers = await listAssociatedWorkers(req.partnerProfileId!);
     return res.json({ success: true, count: workers.length, data: workers });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const dashboardSummary = async (req: PartnerRequest, res: Response) => {
+  try {
+    const summary = await getPartnerDashboardSummary(
+      req.partnerProfileId!,
+      req.user!.userId
+    );
+    return res.json({ success: true, data: summary });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
   }

@@ -7,6 +7,8 @@ import {
   generateMatchesHandler,
   buildAssignmentPoolHandler,
   assignRequirementWorkerHandler,
+  requestAssignmentReplacementHandler,
+  cancelAssignmentReplacementHandler,
 } from "./matching.controller";
 
 const router = express.Router();
@@ -34,6 +36,16 @@ router.post(
 router.post(
   "/requirements/:id/assign",
   assignRequirementWorkerHandler
+);
+
+router.post(
+  "/requirements/:id/candidates/:candidateId/replacements",
+  requestAssignmentReplacementHandler
+);
+
+router.patch(
+  "/requirements/:id/replacements/:replacementRequestId/cancel",
+  cancelAssignmentReplacementHandler
 );
 
 export default router;

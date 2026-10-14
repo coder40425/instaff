@@ -6,6 +6,8 @@ import { generateRequirementMatches } from "./matching.service";
 import {
   buildAssignmentPool,
   assignRequirementWorker,
+  requestAssignmentReplacement,
+  cancelAssignmentReplacement,
 } from "./assignment.service";
 
 // ── Generate Matches ──────────────────────────────────────────────────────────
@@ -84,7 +86,10 @@ export const assignRequirementWorkerHandler =
           String(req.params.id),
           workerProfileId,
           req.user!.userId,
-          req.user!.role === "ADMIN"
+          req.user!.role === "ADMIN",
+          req.body.replacementRequestId
+            ? String(req.body.replacementRequestId)
+            : undefined
         );
 
       res.json({
@@ -98,3 +103,38 @@ export const assignRequirementWorkerHandler =
       });
     }
   };
+
+export const requestAssignmentReplacementHandler = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const result = await requestAssignmentReplacement(
+      String(req.params.id),
+      String(req.params.candidateId),
+      req.user!.userId,
+      String(req.body.reason ?? ""),
+      req.user!.role === "ADMIN"
+    );
+    return res.status(201).json({ success: true, data: result });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const cancelAssignmentReplacementHandler = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const result = await cancelAssignmentReplacement(
+      String(req.params.id),
+      String(req.params.replacementRequestId),
+      req.user!.userId,
+      req.user!.role === "ADMIN"
+    );
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};

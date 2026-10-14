@@ -1,10 +1,15 @@
 import { api } from './api';
 import type { PublicWorkerProfile } from '../types';
-import type { PartnerProfile } from '../types/partner';
+import type { PartnerAssociatedWorker, PartnerDashboardSummary, PartnerProfile } from '../types/partner';
 
 export const partnerService = {
   getProfile: async (): Promise<PartnerProfile> => {
     const response = await api.get('/partner/profile');
+    return response.data.data;
+  },
+
+  getDashboardSummary: async (): Promise<PartnerDashboardSummary> => {
+    const response = await api.get('/partner/dashboard-summary');
     return response.data.data;
   },
 
@@ -13,7 +18,7 @@ export const partnerService = {
     return response.data.data;
   },
 
-  getWorkers: async (): Promise<PublicWorkerProfile[]> => {
+  getWorkers: async (): Promise<PartnerAssociatedWorker[]> => {
     const response = await api.get('/partner/workers');
     return response.data.data ?? [];
   },

@@ -12,6 +12,7 @@ import {
   customerStartBookingHandler,
   completeBookingHandler,
   cancelBookingHandler,
+  cancelWorkerBookingHandler,
   markPaidHandler,
   replacementHandler,
   noShowHandler,
@@ -34,6 +35,7 @@ router.patch("/:id/no-show",                        authorizeRoles("CUSTOMER"), 
 
 // Worker routes
 router.get("/worker/my",                            authorizeRoles("WORKER"),   workerBookings);
+router.patch("/worker/:id/cancel",                  authorizeRoles("WORKER"),   cancelWorkerBookingHandler);
 router.patch("/:id/accept",                         authorizeRoles("WORKER"),   acceptBookingHandler);
 router.patch("/:id/reject",                         authorizeRoles("WORKER"),   rejectBookingHandler);
 router.patch("/:id/confirm-payment",                authorizeRoles("WORKER"),   confirmPaymentHandler);

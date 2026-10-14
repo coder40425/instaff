@@ -6,6 +6,75 @@ import {
   PartnerType,
 } from "./partner.constants";
 
+const ACTIVE_REQUIREMENT_STATUSES = ["OPEN", "MATCHING", "FILLED"] as const;
+const ACTIVE_BOOKING_STATUSES = ["ACCEPTED", "IN_PROGRESS"] as const;
+
+type WorkerStatusSource = {
+  id: string;
+  userId: string;
+  isVerified: boolean;
+  isAvailable: boolean;
+  isSuspended: boolean;
+};
+
+export type PartnerWorkerOperationalStatus =
+  | "AVAILABLE"
+  | "BUSY"
+  | "ON_DUTY"
+  | "OFFLINE"
+  | "SUSPENDED";
+
+const resolveWorkerOperationalStatuses = async (
+  workers: WorkerStatusSource[]
+) => {
+  const workerIds = workers.map((worker) => worker.id);
+  const userIds = workers.map((worker) => worker.userId);
+  if (!workers.length) return new Map<string, PartnerWorkerOperationalStatus | null>();
+
+  const [activeAssignments, activeBookings] = await Promise.all([
+    prisma.requirementCandidate.findMany({
+      where: {
+        workerProfileId: { in: workerIds },
+        status: "ASSIGNED",
+        replacementRequestsCurrent: { none: { status: "RESOLVED" } },
+        requirement: { status: { in: [...ACTIVE_REQUIREMENT_STATUSES] } },
+      },
+      select: { workerProfileId: true },
+    }),
+    prisma.booking.findMany({
+      where: {
+        workerId: { in: userIds },
+        status: { in: [...ACTIVE_BOOKING_STATUSES] },
+      },
+      select: { workerId: true, status: true, startedAt: true },
+    }),
+  ]);
+
+  const busyWorkerIds = new Set(activeAssignments.map((assignment) => assignment.workerProfileId));
+  const workerIdByUserId = new Map(workers.map((worker) => [worker.userId, worker.id]));
+  const onDutyWorkerIds = new Set(
+    activeBookings
+      .filter((booking) => booking.status === "IN_PROGRESS" && booking.startedAt !== null)
+      .map((booking) => workerIdByUserId.get(booking.workerId))
+      .filter((workerId): workerId is string => workerId !== undefined)
+  );
+  for (const booking of activeBookings) {
+    const workerId = workerIdByUserId.get(booking.workerId);
+    if (workerId) busyWorkerIds.add(workerId);
+  }
+
+  return new Map(
+    workers.map((worker) => {
+      let status: PartnerWorkerOperationalStatus | null = null;
+      if (onDutyWorkerIds.has(worker.id)) status = "ON_DUTY";
+      else if (busyWorkerIds.has(worker.id)) status = "BUSY";
+      else if (worker.isSuspended) status = "SUSPENDED";
+      else if (worker.isVerified) status = worker.isAvailable ? "AVAILABLE" : "OFFLINE";
+      return [worker.id, status];
+    })
+  );
+};
+
 export const getOwnPartnerProfile = async (userId: string) => {
   const profile = await prisma.partnerProfile.findUnique({
     where: { userId },
@@ -52,12 +121,112 @@ export const updateOwnPartnerProfile = async (userId: string, name: string) => {
   });
 };
 
-export const listAssociatedWorkers = (partnerProfileId: string) =>
-  prisma.workerProfile.findMany({
+export const listAssociatedWorkers = async (partnerProfileId: string) => {
+  const workers = await prisma.workerProfile.findMany({
     where: { partnerId: partnerProfileId },
-    select: customerWorkerSelect,
+    select: { ...customerWorkerSelect, isSuspended: true },
     orderBy: { createdAt: "desc" },
   });
+  const statuses = await resolveWorkerOperationalStatuses(workers);
+  return workers.map(({ isSuspended: _isSuspended, ...worker }) => ({
+    ...worker,
+    operationalStatus: statuses.get(worker.id) ?? null,
+  }));
+};
+
+export const getPartnerDashboardSummary = async (
+  partnerProfileId: string,
+  userId: string
+) => {
+  const workers = await prisma.workerProfile.findMany({
+    where: { partnerId: partnerProfileId },
+    select: {
+      id: true,
+      userId: true,
+      isVerified: true,
+      isAvailable: true,
+      isSuspended: true,
+    },
+  });
+  const now = new Date();
+  const requirementOwner = {
+    createdById: userId,
+    source: "PARTNER_CLIENT" as const,
+  };
+
+  const [statuses, openRequirements, pendingOffers, confirmedAssignments, upcomingAssignments, openReplacementRequests] = await Promise.all([
+    resolveWorkerOperationalStatuses(workers),
+    prisma.requirement.count({
+      where: { ...requirementOwner, status: { in: ["OPEN", "MATCHING"] } },
+    }),
+    prisma.requirementCandidate.count({
+      where: {
+        status: "OFFERED",
+        requirement: {
+          ...requirementOwner,
+          status: { in: [...ACTIVE_REQUIREMENT_STATUSES] },
+        },
+        replacementRequestsReplacement: { none: { status: "CANCELLED" } },
+      },
+    }),
+    prisma.requirementCandidate.count({
+      where: {
+        status: "ASSIGNED",
+        replacementRequestsCurrent: { none: { status: "RESOLVED" } },
+        requirement: {
+          ...requirementOwner,
+          status: { in: [...ACTIVE_REQUIREMENT_STATUSES] },
+        },
+      },
+    }),
+    prisma.requirementCandidate.count({
+      where: {
+        status: "ASSIGNED",
+        replacementRequestsCurrent: { none: { status: "RESOLVED" } },
+        requirement: {
+          ...requirementOwner,
+          status: { in: [...ACTIVE_REQUIREMENT_STATUSES] },
+          joiningDate: { gte: now },
+        },
+      },
+    }),
+    prisma.replacementRequest.count({
+      where: {
+        status: { in: ["OPEN", "OFFERED"] },
+        requirement: {
+          ...requirementOwner,
+          status: { in: [...ACTIVE_REQUIREMENT_STATUSES] },
+        },
+      },
+    }),
+  ]);
+
+  const statusCounts = {
+    available: 0,
+    busy: 0,
+    onDuty: 0,
+  };
+  for (const status of statuses.values()) {
+    if (status === "AVAILABLE") statusCounts.available += 1;
+    else if (status === "BUSY") statusCounts.busy += 1;
+    else if (status === "ON_DUTY") statusCounts.onDuty += 1;
+  }
+
+  return {
+    workforce: {
+      total: workers.length,
+      ...statusCounts,
+      verificationPending: workers.filter((worker) => !worker.isVerified).length,
+    },
+    assignments: {
+      openRequirements,
+      pendingOffers,
+      confirmedAssignments,
+      upcomingAssignments,
+      openReplacementRequests,
+    },
+  };
+};
 
 const lockApprovedPartner = async (
   tx: Prisma.TransactionClient,

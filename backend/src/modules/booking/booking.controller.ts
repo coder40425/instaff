@@ -10,6 +10,7 @@ import {
   rejectBooking,
   completeBooking,
   cancelBooking,
+  cancelWorkerBooking,
   markNoShow,
   requestReplacement,
   markBookingPaid,
@@ -94,10 +95,27 @@ export const completeBookingHandler = async (req: AuthRequest, res: Response) =>
 
 export const cancelBookingHandler = async (req: AuthRequest, res: Response) => {
   try {
-    const booking = await cancelBooking(String(req.params.id), req.user!.userId);
+    const booking = await cancelBooking(
+      String(req.params.id),
+      req.user!.userId,
+      req.body?.reason
+    );
     res.json({ success: true, data: booking });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    res.status(error.statusCode || 400).json({ success: false, message: error.message });
+  }
+};
+
+export const cancelWorkerBookingHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const booking = await cancelWorkerBooking(
+      String(req.params.id),
+      req.user!.userId,
+      req.body?.reason
+    );
+    res.json({ success: true, data: booking });
+  } catch (error: any) {
+    res.status(error.statusCode || 400).json({ success: false, message: error.message });
   }
 };
 
