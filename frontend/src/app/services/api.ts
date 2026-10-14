@@ -21,7 +21,7 @@ import type {
   CrmRequirementPipeline,
   CrmRequirementListItem,
 } from '../types';
-import type { AdminPartnerProfile } from '../types/partner';
+import type { AdminPartnerProfile, AdminPartnerVerificationDetails } from '../types/partner';
 
 const API_BASE =
   ((import.meta as any).env?.VITE_API_URL as string) ||
@@ -288,6 +288,26 @@ export const adminService = {
   rejectPartner:     async (id: string) => { const r = await api.patch(`/admin/partners/${id}/reject`); return r.data.data; },
   suspendPartner:    async (id: string) => { const r = await api.patch(`/admin/partners/${id}/suspend`); return r.data.data; },
   reactivatePartner: async (id: string) => { const r = await api.patch(`/admin/partners/${id}/reactivate`); return r.data.data; },
+  getPartnerVerificationDetails: async (id: string): Promise<AdminPartnerVerificationDetails> => {
+    const r = await api.get(`/admin/partners/${id}/verification`);
+    return r.data.data;
+  },
+  approvePartnerSubmission: async (partnerId: string, submissionId: string) => {
+    const r = await api.patch(`/admin/partners/${partnerId}/submissions/${submissionId}/approve`);
+    return r.data.data;
+  },
+  rejectPartnerSubmission: async (partnerId: string, submissionId: string, reason: string) => {
+    const r = await api.patch(`/admin/partners/${partnerId}/submissions/${submissionId}/reject`, { reason });
+    return r.data.data;
+  },
+  approvePartnerDocument: async (partnerId: string, documentId: string) => {
+    const r = await api.patch(`/admin/partners/${partnerId}/documents/${documentId}/approve`);
+    return r.data.data;
+  },
+  rejectPartnerDocument: async (partnerId: string, documentId: string, reason: string) => {
+    const r = await api.patch(`/admin/partners/${partnerId}/documents/${documentId}/reject`, { reason });
+    return r.data.data;
+  },
   // Admin-only: sees pending/rejected workers awaiting verification.
   getPendingWorkers: async () => { const r = await api.get('/admin/workers/pending'); return r.data.data; },
   // IMPORTANT: these routes take the USER id, not the worker profile id. Do not change.

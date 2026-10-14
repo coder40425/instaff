@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma";
 import { releaseWorkerAvailabilityIfIdle } from "../matching/assignment.service";
 import {
@@ -63,6 +64,246 @@ export const suspendPartner = (partnerProfileId: string) =>
 
 export const reactivatePartner = (partnerProfileId: string) =>
   updatePartnerStatus(partnerProfileId, "SUSPENDED", "APPROVED");
+
+export const getPartnerVerificationDetails = async (partnerProfileId: string) => {
+  const partner = await prisma.partnerProfile.findUnique({
+    where: { id: partnerProfileId },
+    select: {
+      id: true,
+      partnerType: true,
+      status: true,
+      createdAt: true,
+      businessName: true,
+      contactPerson: true,
+      email: true,
+      alternatePhone: true,
+      profilePhotoUrl: true,
+      businessRegistrationNumber: true,
+      panNumber: true,
+      gstin: true,
+      website: true,
+      description: true,
+      addressLine1: true,
+      addressLine2: true,
+      city: true,
+      district: true,
+      state: true,
+      postalCode: true,
+      country: true,
+      user: { select: { id: true, name: true, phone: true } },
+      documents: {
+        select: {
+          id: true,
+          documentType: true,
+          fileName: true,
+          mimeType: true,
+          fileSize: true,
+          verificationStatus: true,
+          reviewedBy: true,
+          reviewedAt: true,
+          rejectionReason: true,
+          createdAt: true,
+          submissionId: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
+      verificationSubmissions: {
+        select: {
+          id: true,
+          proposedChanges: true,
+          status: true,
+          submittedAt: true,
+          reviewedBy: true,
+          reviewedAt: true,
+          rejectionReason: true,
+          documents: {
+            select: {
+              id: true,
+              documentType: true,
+              fileName: true,
+              mimeType: true,
+              fileSize: true,
+              verificationStatus: true,
+              reviewedBy: true,
+              reviewedAt: true,
+              rejectionReason: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: "desc" },
+          },
+        },
+        orderBy: { submittedAt: "desc" },
+      },
+    },
+  });
+  if (!partner) throw new Error("Partner not found");
+  return partner;
+};
+
+const readProposedChanges = (value: Prisma.JsonValue) => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Verification submission has invalid proposed changes");
+  }
+
+  const allowedFields = new Set([
+    "name",
+    "businessRegistrationNumber",
+    "panNumber",
+    "gstin",
+  ]);
+  const changes: Record<string, string | null> = {};
+  for (const [key, fieldValue] of Object.entries(value)) {
+    if (!allowedFields.has(key)) {
+      throw new Error("Verification submission contains an unsupported field");
+    }
+    if (fieldValue !== null && typeof fieldValue !== "string") {
+      throw new Error("Verification submission contains an invalid field value");
+    }
+    if (typeof fieldValue === "string" && fieldValue.trim() !== fieldValue) {
+      throw new Error("Verification submission contains an unnormalized field value");
+    }
+    if (key === "name" && (typeof fieldValue !== "string" || fieldValue.length < 1 || fieldValue.length > 100)) {
+      throw new Error("Verification submission contains an invalid account name");
+    }
+    if (key === "businessRegistrationNumber" && typeof fieldValue === "string" && fieldValue.length > 100) {
+      throw new Error("Verification submission contains an invalid business registration number");
+    }
+    if (key === "panNumber" && fieldValue !== null && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(fieldValue!)) {
+      throw new Error("Verification submission contains an invalid PAN");
+    }
+    if (key === "gstin" && fieldValue !== null && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(fieldValue!)) {
+      throw new Error("Verification submission contains an invalid GSTIN");
+    }
+    changes[key] = fieldValue;
+  }
+  if (Object.keys(changes).length === 0) {
+    throw new Error("Verification submission has no proposed changes");
+  }
+  return changes;
+};
+
+export const approvePartnerVerificationSubmission = async (
+  partnerProfileId: string,
+  submissionId: string,
+  reviewerId: string
+) =>
+  prisma.$transaction(async (tx) => {
+    const submission = await tx.partnerVerificationSubmission.findUnique({
+      where: { id: submissionId },
+      select: { id: true, partnerProfileId: true, proposedChanges: true, status: true },
+    });
+    if (!submission || submission.partnerProfileId !== partnerProfileId) {
+      throw new Error("Verification submission not found for this Partner");
+    }
+    if (submission.status !== "PENDING") {
+      throw new Error("Verification submission is no longer pending review");
+    }
+
+    const changes = readProposedChanges(submission.proposedChanges);
+    const claimed = await tx.partnerVerificationSubmission.updateMany({
+      where: { id: submissionId, partnerProfileId, status: "PENDING" },
+      data: { status: "APPROVED", reviewedBy: reviewerId, reviewedAt: new Date(), rejectionReason: null },
+    });
+    if (claimed.count !== 1) throw new Error("Verification submission is no longer pending review");
+
+    const profileChanges: Prisma.PartnerProfileUpdateInput = {};
+    if (Object.prototype.hasOwnProperty.call(changes, "businessRegistrationNumber")) {
+      profileChanges.businessRegistrationNumber = changes.businessRegistrationNumber;
+    }
+    if (Object.prototype.hasOwnProperty.call(changes, "panNumber")) profileChanges.panNumber = changes.panNumber;
+    if (Object.prototype.hasOwnProperty.call(changes, "gstin")) profileChanges.gstin = changes.gstin;
+    if (Object.keys(profileChanges).length > 0) {
+      await tx.partnerProfile.update({ where: { id: partnerProfileId }, data: profileChanges });
+    }
+    if (Object.prototype.hasOwnProperty.call(changes, "name")) {
+      const partner = await tx.partnerProfile.findUnique({
+        where: { id: partnerProfileId },
+        select: { userId: true },
+      });
+      if (!partner) throw new Error("Partner not found");
+      await tx.user.update({ where: { id: partner.userId }, data: { name: changes.name! } });
+    }
+
+    return tx.partnerVerificationSubmission.findUniqueOrThrow({
+      where: { id: submissionId },
+      select: { id: true, status: true, reviewedBy: true, reviewedAt: true, rejectionReason: true },
+    });
+  });
+
+export const rejectPartnerVerificationSubmission = async (
+  partnerProfileId: string,
+  submissionId: string,
+  reviewerId: string,
+  reason: string
+) => {
+  const result = await prisma.partnerVerificationSubmission.updateMany({
+    where: { id: submissionId, partnerProfileId, status: "PENDING" },
+    data: { status: "REJECTED", reviewedBy: reviewerId, reviewedAt: new Date(), rejectionReason: reason },
+  });
+  if (result.count !== 1) {
+    const submission = await prisma.partnerVerificationSubmission.findUnique({
+      where: { id: submissionId },
+      select: { partnerProfileId: true, status: true },
+    });
+    if (!submission || submission.partnerProfileId !== partnerProfileId) {
+      throw new Error("Verification submission not found for this Partner");
+    }
+    throw new Error("Verification submission is no longer pending review");
+  }
+  return prisma.partnerVerificationSubmission.findUniqueOrThrow({
+    where: { id: submissionId },
+    select: { id: true, status: true, reviewedBy: true, reviewedAt: true, rejectionReason: true },
+  });
+};
+
+const reviewPartnerDocument = async (
+  partnerProfileId: string,
+  documentId: string,
+  reviewerId: string,
+  status: "VERIFIED" | "REJECTED",
+  rejectionReason: string | null
+) => {
+  const result = await prisma.partnerDocument.updateMany({
+    where: {
+      id: documentId,
+      partnerProfileId,
+      verificationStatus: "PENDING",
+    },
+    data: {
+      verificationStatus: status,
+      reviewedBy: reviewerId,
+      reviewedAt: new Date(),
+      rejectionReason,
+    },
+  });
+  if (result.count !== 1) {
+    const document = await prisma.partnerDocument.findUnique({
+      where: { id: documentId },
+      select: { partnerProfileId: true, verificationStatus: true },
+    });
+    if (!document || document.partnerProfileId !== partnerProfileId) {
+      throw new Error("Document not found for this Partner");
+    }
+    throw new Error("Document is no longer pending review");
+  }
+  return prisma.partnerDocument.findUniqueOrThrow({
+    where: { id: documentId },
+    select: { id: true, verificationStatus: true, reviewedBy: true, reviewedAt: true, rejectionReason: true },
+  });
+};
+
+export const approvePartnerDocument = (
+  partnerProfileId: string,
+  documentId: string,
+  reviewerId: string
+) => reviewPartnerDocument(partnerProfileId, documentId, reviewerId, "VERIFIED", null);
+
+export const rejectPartnerDocument = (
+  partnerProfileId: string,
+  documentId: string,
+  reviewerId: string,
+  reason: string
+) => reviewPartnerDocument(partnerProfileId, documentId, reviewerId, "REJECTED", reason);
 
 export const getPendingWorkers = async () => {
   return prisma.workerProfile.findMany({

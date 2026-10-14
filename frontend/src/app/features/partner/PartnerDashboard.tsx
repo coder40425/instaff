@@ -2,7 +2,8 @@ import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertCircle, ArrowRight, BriefcaseBusiness, CalendarClock, CheckCircle2,
-  ClipboardList, Clock3, RefreshCw, UserRoundCheck, UsersRound,
+  ClipboardList, Clock3, CreditCard, DollarSign, RefreshCw, Star, UserRoundCheck,
+  UsersRound, Wallet,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import PartnerLayout from '../../layouts/PartnerLayout';
@@ -20,7 +21,7 @@ function MetricCard({
   detail,
 }: {
   title: string;
-  value: number;
+  value: number | string | null;
   icon: LucideIcon;
   detail?: string;
 }) {
@@ -31,7 +32,9 @@ function MetricCard({
         <Icon className="h-4 w-4 text-neutral-500" />
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-bold tabular-nums">{value}</p>
+        <p className={value === null ? 'text-sm font-medium text-neutral-500 dark:text-neutral-400' : 'text-2xl font-bold tabular-nums'}>
+          {value === null ? 'Not available yet' : value}
+        </p>
         {detail && <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{detail}</p>}
       </CardContent>
     </Card>
@@ -148,6 +151,36 @@ export default function PartnerDashboard() {
                   </Card>
                 ) : (
                   <>
+                    <section className="space-y-3" aria-labelledby="business-overview-heading">
+                      <div>
+                        <h2 id="business-overview-heading" className="text-lg font-semibold">Business overview</h2>
+                        <p className="text-sm text-neutral-500">Financial tracking is not yet available for Partner accounts.</p>
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        <MetricCard title="Today's Revenue" value={summaryQuery.data.businessOverview.todayRevenue} icon={DollarSign} />
+                        <MetricCard title="Monthly Revenue" value={summaryQuery.data.businessOverview.monthlyRevenue} icon={DollarSign} />
+                        <MetricCard title="Commission" value={summaryQuery.data.businessOverview.commission} icon={DollarSign} />
+                        <MetricCard title="Wallet Balance" value={summaryQuery.data.businessOverview.walletBalance} icon={Wallet} />
+                        <MetricCard title="Pending Payments" value={summaryQuery.data.businessOverview.pendingPayments} icon={CreditCard} />
+                        <MetricCard
+                          title="Replacement Requests"
+                          value={summaryQuery.data.assignments.openReplacementRequests}
+                          icon={RefreshCw}
+                          detail="Open or offered replacement"
+                        />
+                        <MetricCard
+                          title="Average rating of associated workers"
+                          value={summaryQuery.data.businessOverview.averageAssociatedWorkerRating === null
+                            ? null
+                            : `${summaryQuery.data.businessOverview.averageAssociatedWorkerRating.toFixed(1)} / 5`}
+                          icon={Star}
+                          detail={summaryQuery.data.businessOverview.associatedWorkerReviewCount > 0
+                            ? `Based on ${summaryQuery.data.businessOverview.associatedWorkerReviewCount} customer reviews`
+                            : 'No customer reviews for currently associated workers'}
+                        />
+                      </div>
+                    </section>
+
                     <section className="space-y-3" aria-labelledby="workforce-overview-heading">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>

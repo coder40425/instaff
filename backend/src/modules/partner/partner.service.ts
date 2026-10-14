@@ -1,10 +1,11 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma";
 import { customerWorkerSelect } from "../worker/worker.public";
 import {
   effectivePartnerWorkerLimit,
   PartnerType,
 } from "./partner.constants";
+import type { PartnerProfileUpdate } from "./partner.validation";
 
 const ACTIVE_REQUIREMENT_STATUSES = ["OPEN", "MATCHING", "FILLED"] as const;
 const ACTIVE_BOOKING_STATUSES = ["ACCEPTED", "IN_PROGRESS"] as const;
@@ -84,6 +85,50 @@ export const getOwnPartnerProfile = async (userId: string) => {
       status: true,
       workerLimit: true,
       createdAt: true,
+      businessName: true,
+      contactPerson: true,
+      email: true,
+      alternatePhone: true,
+      profilePhotoUrl: true,
+      businessRegistrationNumber: true,
+      panNumber: true,
+      gstin: true,
+      website: true,
+      description: true,
+      addressLine1: true,
+      addressLine2: true,
+      city: true,
+      district: true,
+      state: true,
+      postalCode: true,
+      country: true,
+      user: { select: { name: true, phone: true } },
+      documents: {
+        select: {
+          id: true,
+          documentType: true,
+          fileName: true,
+          mimeType: true,
+          fileSize: true,
+          verificationStatus: true,
+          reviewedAt: true,
+          rejectionReason: true,
+          createdAt: true,
+          submissionId: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
+      verificationSubmissions: {
+        select: {
+          id: true,
+          proposedChanges: true,
+          status: true,
+          submittedAt: true,
+          reviewedAt: true,
+          rejectionReason: true,
+        },
+        orderBy: { submittedAt: "desc" },
+      },
     },
   });
 
@@ -104,21 +149,102 @@ export const getOwnPartnerProfile = async (userId: string) => {
     workerLimit,
     workerCount,
     createdAt: profile.createdAt,
+    name: profile.user.name,
+    phone: profile.user.phone,
+    businessName: profile.businessName,
+    contactPerson: profile.contactPerson,
+    email: profile.email,
+    alternatePhone: profile.alternatePhone,
+    profilePhotoUrl: profile.profilePhotoUrl,
+    businessRegistrationNumber: profile.businessRegistrationNumber,
+    panNumber: profile.panNumber,
+    gstin: profile.gstin,
+    website: profile.website,
+    description: profile.description,
+    addressLine1: profile.addressLine1,
+    addressLine2: profile.addressLine2,
+    city: profile.city,
+    district: profile.district,
+    state: profile.state,
+    postalCode: profile.postalCode,
+    country: profile.country,
+    documents: profile.documents,
+    verificationSubmissions: profile.verificationSubmissions,
   };
 };
 
-export const updateOwnPartnerProfile = async (userId: string, name: string) => {
+export const updateOwnPartnerProfile = async (
+  userId: string,
+  input: PartnerProfileUpdate
+) => {
   const profile = await prisma.partnerProfile.findUnique({
     where: { userId },
-    select: { id: true },
+    select: {
+      id: true,
+      businessRegistrationNumber: true,
+      panNumber: true,
+      gstin: true,
+      user: { select: { name: true } },
+    },
   });
   if (!profile) throw new Error("Partner profile not found");
 
-  return prisma.user.update({
-    where: { id: userId },
-    data: { name },
-    select: { name: true },
-  });
+  const proposedChanges: Record<string, string | null> = {};
+  if (input.name !== profile.user.name) proposedChanges.name = input.name;
+  if (
+    input.businessRegistrationNumber !== undefined &&
+    input.businessRegistrationNumber !== profile.businessRegistrationNumber
+  ) {
+    proposedChanges.businessRegistrationNumber = input.businessRegistrationNumber;
+  }
+  if (input.panNumber !== undefined && input.panNumber !== profile.panNumber) {
+    proposedChanges.panNumber = input.panNumber;
+  }
+  if (input.gstin !== undefined && input.gstin !== profile.gstin) {
+    proposedChanges.gstin = input.gstin;
+  }
+
+  const partnerData: Prisma.PartnerProfileUpdateInput = {};
+  if (input.businessName !== undefined) partnerData.businessName = input.businessName;
+  if (input.contactPerson !== undefined) partnerData.contactPerson = input.contactPerson;
+  if (input.email !== undefined) partnerData.email = input.email;
+  if (input.alternatePhone !== undefined) partnerData.alternatePhone = input.alternatePhone;
+  if (input.profilePhotoUrl !== undefined) partnerData.profilePhotoUrl = input.profilePhotoUrl;
+  if (input.website !== undefined) partnerData.website = input.website;
+  if (input.description !== undefined) partnerData.description = input.description;
+  if (input.addressLine1 !== undefined) partnerData.addressLine1 = input.addressLine1;
+  if (input.addressLine2 !== undefined) partnerData.addressLine2 = input.addressLine2;
+  if (input.city !== undefined) partnerData.city = input.city;
+  if (input.district !== undefined) partnerData.district = input.district;
+  if (input.state !== undefined) partnerData.state = input.state;
+  if (input.postalCode !== undefined) partnerData.postalCode = input.postalCode;
+  if (input.country !== undefined) partnerData.country = input.country;
+
+  await prisma.$transaction(async (tx) => {
+    if (Object.keys(proposedChanges).length > 0) {
+      const pendingSubmission = await tx.partnerVerificationSubmission.findFirst({
+        where: { partnerProfileId: profile.id, status: "PENDING" },
+        select: { id: true },
+      });
+      if (pendingSubmission) {
+        throw new Error("A verification submission is already pending review");
+      }
+
+      await tx.partnerVerificationSubmission.create({
+        data: {
+          partnerProfileId: profile.id,
+          proposedChanges,
+          status: "PENDING",
+        },
+      });
+    }
+
+    if (Object.keys(partnerData).length > 0) {
+      await tx.partnerProfile.update({ where: { id: profile.id }, data: partnerData });
+    }
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+  return getOwnPartnerProfile(userId);
 };
 
 export const listAssociatedWorkers = async (partnerProfileId: string) => {
@@ -154,7 +280,7 @@ export const getPartnerDashboardSummary = async (
     source: "PARTNER_CLIENT" as const,
   };
 
-  const [statuses, openRequirements, pendingOffers, confirmedAssignments, upcomingAssignments, openReplacementRequests] = await Promise.all([
+  const [statuses, openRequirements, pendingOffers, confirmedAssignments, upcomingAssignments, openReplacementRequests, associatedWorkerReviews] = await Promise.all([
     resolveWorkerOperationalStatuses(workers),
     prisma.requirement.count({
       where: { ...requirementOwner, status: { in: ["OPEN", "MATCHING"] } },
@@ -199,6 +325,11 @@ export const getPartnerDashboardSummary = async (
         },
       },
     }),
+    prisma.review.aggregate({
+      where: { workerId: { in: workers.map((worker) => worker.userId) } },
+      _avg: { rating: true },
+      _count: { rating: true },
+    }),
   ]);
 
   const statusCounts = {
@@ -224,6 +355,15 @@ export const getPartnerDashboardSummary = async (
       confirmedAssignments,
       upcomingAssignments,
       openReplacementRequests,
+    },
+    businessOverview: {
+      todayRevenue: null,
+      monthlyRevenue: null,
+      commission: null,
+      walletBalance: null,
+      pendingPayments: null,
+      averageAssociatedWorkerRating: associatedWorkerReviews._avg.rating,
+      associatedWorkerReviewCount: associatedWorkerReviews._count.rating,
     },
   };
 };

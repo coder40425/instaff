@@ -21,8 +21,8 @@ export const ownProfile = async (req: PartnerRequest, res: Response) => {
 
 export const updateOwnProfile = async (req: PartnerRequest, res: Response) => {
   try {
-    const { name } = partnerProfileUpdateSchema.parse(req.body);
-    const profile = await updateOwnPartnerProfile(req.user!.userId, name);
+    const input = partnerProfileUpdateSchema.parse(req.body);
+    const profile = await updateOwnPartnerProfile(req.user!.userId, input);
     return res.json({ success: true, data: profile });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });

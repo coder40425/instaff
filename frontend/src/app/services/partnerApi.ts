@@ -1,6 +1,6 @@
 import { api } from './api';
 import type { PublicWorkerProfile } from '../types';
-import type { PartnerAssociatedWorker, PartnerDashboardSummary, PartnerProfile } from '../types/partner';
+import type { PartnerAssociatedWorker, PartnerDashboardSummary, PartnerProfile, PartnerProfileUpdate } from '../types/partner';
 
 export const partnerService = {
   getProfile: async (): Promise<PartnerProfile> => {
@@ -13,7 +13,7 @@ export const partnerService = {
     return response.data.data;
   },
 
-  updateProfile: async (data: { name: string }): Promise<{ name: string }> => {
+  updateProfile: async (data: PartnerProfileUpdate): Promise<PartnerProfile> => {
     const response = await api.put('/partner/profile', data);
     return response.data.data;
   },
