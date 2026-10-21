@@ -4,7 +4,9 @@ import { authorizeRoles } from "../../middleware/roleMiddleware";
 
 import {
   pendingPartners, allPartners, approvePartnerHandler, rejectPartnerHandler,
-  suspendPartnerHandler, reactivatePartnerHandler,
+  suspendPartnerHandler, reactivatePartnerHandler, partnerVerificationDetails,
+  approvePartnerSubmissionHandler, rejectPartnerSubmissionHandler,
+  approvePartnerDocumentHandler, rejectPartnerDocumentHandler,
   pendingWorkers, approveWorkerHandler, rejectWorkerHandler,
   suspendWorkerHandler, reactivateWorkerHandler,
   bookings, analytics,
@@ -25,6 +27,23 @@ router.patch("/partners/:partnerProfileId/approve", approvePartnerHandler);
 router.patch("/partners/:partnerProfileId/reject", rejectPartnerHandler);
 router.patch("/partners/:partnerProfileId/suspend", suspendPartnerHandler);
 router.patch("/partners/:partnerProfileId/reactivate", reactivatePartnerHandler);
+router.get("/partners/:partnerProfileId/verification", partnerVerificationDetails);
+router.patch(
+  "/partners/:partnerProfileId/submissions/:submissionId/approve",
+  approvePartnerSubmissionHandler
+);
+router.patch(
+  "/partners/:partnerProfileId/submissions/:submissionId/reject",
+  rejectPartnerSubmissionHandler
+);
+router.patch(
+  "/partners/:partnerProfileId/documents/:documentId/approve",
+  approvePartnerDocumentHandler
+);
+router.patch(
+  "/partners/:partnerProfileId/documents/:documentId/reject",
+  rejectPartnerDocumentHandler
+);
 
 // Workers
 router.get("/workers/pending", pendingWorkers);

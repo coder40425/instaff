@@ -26,7 +26,7 @@ import {
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
 
-import { crmService } from '../../../services/api';
+import { crmService, matchingService } from '../../../services/api';
 
 import type {
   AssignmentMode,
@@ -281,6 +281,8 @@ export default function CrmRequirementDetails() {
     useState<
       RequirementCandidateStatus | ''
     >('');
+  const [replacementWorkerByRequest, setReplacementWorkerByRequest] =
+    useState<Record<string, string>>({});
 
   /*
    * Requirement detail
@@ -452,8 +454,53 @@ export default function CrmRequirementDetails() {
       },
     });
 
+  const requestReplacementMutation = useMutation({
+    mutationFn: ({ candidateId, reason }: { candidateId: string; reason: string }) =>
+      matchingService.requestAssignmentReplacement(id!, candidateId, reason),
+    onSuccess: () => {
+      refreshAll();
+      queryClient.invalidateQueries({ queryKey: ['crm-overview'] });
+      toast.success('Replacement request created');
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err)),
+  });
+
+  const offerReplacementMutation = useMutation({
+    mutationFn: ({ replacementRequestId, workerProfileId }: { replacementRequestId: string; workerProfileId: string }) =>
+      matchingService.sendAssignmentOffer(id!, workerProfileId, replacementRequestId),
+    onSuccess: () => {
+      refreshAll();
+      queryClient.invalidateQueries({ queryKey: ['crm-overview'] });
+      toast.success('Replacement offer sent. Waiting for worker acceptance.');
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err)),
+  });
+
+  const cancelReplacementMutation = useMutation({
+    mutationFn: (replacementRequestId: string) =>
+      matchingService.cancelAssignmentReplacement(id!, replacementRequestId),
+    onSuccess: () => {
+      refreshAll();
+      queryClient.invalidateQueries({ queryKey: ['crm-overview'] });
+      toast.success('Replacement request cancelled');
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err)),
+  });
+
   const candidates =
     requirement?.candidates ?? [];
+  const replacementRequests = requirement?.replacementRequests ?? [];
+  const replacedCandidateIds = new Set(
+    replacementRequests
+      .filter((request) => request.status === 'RESOLVED')
+      .map((request) => request.currentAssignmentCandidateId)
+  );
+  const activeAssignedCandidates = candidates.filter(
+    (candidate) =>
+      candidate.status === 'ASSIGNED' &&
+      !replacedCandidateIds.has(candidate.id) &&
+      requirement && ['OPEN', 'MATCHING', 'FILLED'].includes(requirement.status)
+  );
 
   const preferredWorker = candidates.find(
     (candidate) =>
@@ -497,7 +544,10 @@ export default function CrmRequirementDetails() {
   const actionsRunning =
     generateMatchesMutation.isPending ||
     buildPoolMutation.isPending ||
-    assignMutation.isPending;
+    assignMutation.isPending ||
+    requestReplacementMutation.isPending ||
+    offerReplacementMutation.isPending ||
+    cancelReplacementMutation.isPending;
 
   const canAssignCandidate = (
     status: RequirementCandidateStatus
@@ -1308,6 +1358,101 @@ export default function CrmRequirementDetails() {
               </div>
             )}
 
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Assignment replacements</CardTitle>
+            <p className="text-sm text-neutral-500">
+              The current worker stays assigned until a replacement accepts.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {activeAssignedCandidates.map((candidate) => {
+              const workerName = candidate.workerProfile?.user?.name ?? 'Worker';
+              const hasActiveRequest = replacementRequests.some(
+                (request) =>
+                  request.currentAssignmentCandidateId === candidate.id &&
+                  ['OPEN', 'OFFERED'].includes(request.status)
+              );
+              return (
+                <div key={candidate.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+                  <div>
+                    <p className="font-medium">{workerName}</p>
+                    <p className="text-xs text-neutral-500">Confirmed assignment</p>
+                  </div>
+                  {!hasActiveRequest && ['OPEN', 'MATCHING', 'FILLED'].includes(requirement?.status ?? '') && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={actionsRunning}
+                      onClick={() => {
+                        const reason = window.prompt(`Why is a replacement needed for ${workerName}?`);
+                        if (reason?.trim()) requestReplacementMutation.mutate({ candidateId: candidate.id, reason: reason.trim() });
+                      }}
+                    >
+                      Request replacement
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+
+            {replacementRequests.length > 0 ? replacementRequests.map((request) => (
+              <div key={request.id} className="space-y-3 rounded-lg bg-neutral-50 p-3 dark:bg-neutral-900">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={request.status === 'RESOLVED' ? 'default' : request.status === 'CANCELLED' ? 'secondary' : 'outline'}>
+                    {request.status.toLowerCase()}
+                  </Badge>
+                  <span className="text-sm font-medium">
+                    {request.currentAssignmentCandidate?.workerProfile.user.name ?? 'Original worker'}
+                    {request.replacementCandidate && ` → ${request.replacementCandidate.workerProfile.user.name}`}
+                  </span>
+                </div>
+                <p className="text-sm text-neutral-600 dark:text-neutral-300">{request.reason}</p>
+                {request.status === 'OPEN' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      className="h-9 min-w-56 rounded-md border border-neutral-300 bg-background px-3 text-sm dark:border-neutral-700"
+                      value={replacementWorkerByRequest[request.id] ?? ''}
+                      onChange={(event) => setReplacementWorkerByRequest((current) => ({ ...current, [request.id]: event.target.value }))}
+                    >
+                      <option value="">Choose an eligible candidate</option>
+                      {candidates
+                        .filter((candidate) => ASSIGNABLE_STATUSES.includes(candidate.status))
+                        .map((candidate) => (
+                          <option key={candidate.id} value={candidate.workerProfileId}>
+                            {candidate.workerProfile?.user?.name ?? 'Worker'}
+                          </option>
+                        ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      disabled={!replacementWorkerByRequest[request.id] || actionsRunning}
+                      onClick={() => offerReplacementMutation.mutate({
+                        replacementRequestId: request.id,
+                        workerProfileId: replacementWorkerByRequest[request.id],
+                      })}
+                    >
+                      Send replacement offer
+                    </Button>
+                  </div>
+                )}
+                {['OPEN', 'OFFERED'].includes(request.status) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={actionsRunning}
+                    onClick={() => cancelReplacementMutation.mutate(request.id)}
+                  >
+                    Cancel request
+                  </Button>
+                )}
+              </div>
+            )) : activeAssignedCandidates.length === 0 ? (
+              <p className="text-sm text-neutral-500">No confirmed assignments are available for replacement.</p>
+            ) : null}
           </CardContent>
         </Card>
 

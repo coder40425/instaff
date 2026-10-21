@@ -5,6 +5,8 @@ import CustomerLayout from '../../layouts/CustomerLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
+import BookingCancellationDialog from '../../components/BookingCancellationDialog';
+import BookingCancellationDetails from '../../components/BookingCancellationDetails';
 import { Textarea } from '../../components/ui/textarea';
 import { Label } from '../../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
@@ -18,6 +20,7 @@ export default function MyBookingsPage() {
   const [replacementBooking, setReplacementBooking] = useState<any>(null);
   const [replacementReason, setReplacementReason] = useState('');
   const [replacementDetails, setReplacementDetails] = useState('');
+  const [cancellationBooking, setCancellationBooking] = useState<any>(null);
 
   const [reviewOpen, setReviewOpen] = useState<Record<string, boolean>>({});
   const [reviewRating, setReviewRating] = useState<Record<string, number>>({});
@@ -51,9 +54,11 @@ export default function MyBookingsPage() {
   });
 
   const cancelBookingMutation = useMutation({
-    mutationFn: (id: string) => bookingService.cancelBooking(id),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      bookingService.cancelBooking(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer-bookings'] });
+      setCancellationBooking(null);
       toast.success('Booking cancelled');
     },
     onError: (error: any) => {
@@ -246,6 +251,13 @@ export default function MyBookingsPage() {
                     </div>
                   )}
 
+                  <BookingCancellationDetails
+                    status={booking.status}
+                    cancelledAt={booking.cancelledAt}
+                    cancellationReason={booking.cancellationReason}
+                    cancelledBy={booking.cancelledBy}
+                  />
+
                   {/* Show a pending-replacement banner if backend flags it */}
                   {booking.replacementRequested && (
                     <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-lg">
@@ -263,7 +275,12 @@ export default function MyBookingsPage() {
 
                   <div className="flex flex-wrap gap-2 pt-2">
                     {booking.status === 'PENDING' && (
-                      <p className="text-sm text-neutral-500 w-full">Waiting for worker response...</p>
+                      <>
+                        <p className="text-sm text-neutral-500 w-full">Waiting for worker response...</p>
+                        <Button size="sm" variant="destructive" onClick={() => setCancellationBooking(booking)} disabled={cancelBookingMutation.isPending}>
+                          Cancel booking
+                        </Button>
+                      </>
                     )}
 
                     {booking.status === 'ACCEPTED' && !booking.replacementRequested && (
@@ -275,7 +292,7 @@ export default function MyBookingsPage() {
                           Mark No-Show
                         </Button>
                         <ReplacementButton booking={booking} />
-                        <Button size="sm" variant="destructive" onClick={() => cancelBookingMutation.mutate(booking.id)} disabled={cancelBookingMutation.isPending}>
+                        <Button size="sm" variant="destructive" onClick={() => setCancellationBooking(booking)} disabled={cancelBookingMutation.isPending}>
                           Cancel
                         </Button>
                       </>
@@ -366,6 +383,21 @@ export default function MyBookingsPage() {
       </div>
 
       {/* ── Replacement Request Dialog ────────────────────────────────────────── */}
+      <BookingCancellationDialog
+        open={!!cancellationBooking}
+        title="Cancel Booking"
+        description="The booking will be cancelled and the worker will be notified. Please provide a reason."
+        isSubmitting={cancelBookingMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setCancellationBooking(null);
+        }}
+        onConfirm={(reason) => {
+          if (cancellationBooking) {
+            cancelBookingMutation.mutate({ id: cancellationBooking.id, reason });
+          }
+        }}
+      />
+
       <Dialog open={!!replacementBooking} onOpenChange={(open) => { if (!open) handleCloseReplacement(); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>

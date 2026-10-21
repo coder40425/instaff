@@ -3,12 +3,17 @@ import { AuthRequest } from "../../middleware/authMiddleware";
 
 import {
   getPendingPartners, getAllPartners, approvePartner, rejectPartner, suspendPartner, reactivatePartner,
+  getPartnerVerificationDetails, approvePartnerVerificationSubmission,
+  rejectPartnerVerificationSubmission,
+  approvePartnerDocument as approvePartnerDocumentReview,
+  rejectPartnerDocument as rejectPartnerDocumentReview,
   getPendingWorkers, approveWorker, rejectWorker, suspendWorker, reactivateWorker,
   getAllBookings, getAnalytics, reassignBooking, forceCompleteBooking, forceCancelBooking,
   getReplacementCandidates,
   getPlatformPaymentInfo, upsertPlatformPaymentInfo,
   getAllWorkerWallets, settleWorkerWallet, getWorkerWalletById,
 } from "./admin.service";
+import { verificationRejectionSchema } from "../partner/partner.validation";
 
 export const pendingPartners = async (_req: AuthRequest, res: Response) => {
   try {
@@ -49,6 +54,61 @@ export const reactivatePartnerHandler = async (req: AuthRequest, res: Response) 
   try {
     const partner = await reactivatePartner(String(req.params.partnerProfileId));
     return res.json({ success: true, data: partner });
+  } catch (error: any) { return res.status(400).json({ success: false, message: error.message }); }
+};
+
+export const partnerVerificationDetails = async (req: AuthRequest, res: Response) => {
+  try {
+    const details = await getPartnerVerificationDetails(String(req.params.partnerProfileId));
+    return res.json({ success: true, data: details });
+  } catch (error: any) { return res.status(400).json({ success: false, message: error.message }); }
+};
+
+export const approvePartnerSubmissionHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await approvePartnerVerificationSubmission(
+      String(req.params.partnerProfileId),
+      String(req.params.submissionId),
+      req.user!.userId
+    );
+    return res.json({ success: true, data: result });
+  } catch (error: any) { return res.status(400).json({ success: false, message: error.message }); }
+};
+
+export const rejectPartnerSubmissionHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const { reason } = verificationRejectionSchema.parse(req.body);
+    const result = await rejectPartnerVerificationSubmission(
+      String(req.params.partnerProfileId),
+      String(req.params.submissionId),
+      req.user!.userId,
+      reason
+    );
+    return res.json({ success: true, data: result });
+  } catch (error: any) { return res.status(400).json({ success: false, message: error.message }); }
+};
+
+export const approvePartnerDocumentHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await approvePartnerDocumentReview(
+      String(req.params.partnerProfileId),
+      String(req.params.documentId),
+      req.user!.userId
+    );
+    return res.json({ success: true, data: result });
+  } catch (error: any) { return res.status(400).json({ success: false, message: error.message }); }
+};
+
+export const rejectPartnerDocumentHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const { reason } = verificationRejectionSchema.parse(req.body);
+    const result = await rejectPartnerDocumentReview(
+      String(req.params.partnerProfileId),
+      String(req.params.documentId),
+      req.user!.userId,
+      reason
+    );
+    return res.json({ success: true, data: result });
   } catch (error: any) { return res.status(400).json({ success: false, message: error.message }); }
 };
 
@@ -110,9 +170,9 @@ export const forceCompleteBookingHandler = async (req: AuthRequest, res: Respons
 
 export const forceCancelBookingHandler = async (req: AuthRequest, res: Response) => {
   try {
-    const booking = await forceCancelBooking(String(req.params.id));
+    const booking = await forceCancelBooking(String(req.params.id), req.body?.reason);
     res.json({ success: true, data: booking });
-  } catch (error: any) { res.status(400).json({ success: false, message: error.message }); }
+  } catch (error: any) { res.status(error.statusCode || 400).json({ success: false, message: error.message }); }
 };
 
 export const reassignBookingHandler = async (req: AuthRequest, res: Response) => {

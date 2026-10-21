@@ -14,11 +14,14 @@ import { requirementService, matchingService } from '../../services/api';
 import type {
   RequirementCandidate,
   RequirementCandidateStatus,
+  RequirementStatus,
   ShiftTiming,
 } from '../../types';
 
 import {
   MapPin,
+  CalendarDays,
+  Wallet,
   Users,
   Star,
   RefreshCw,
@@ -29,7 +32,19 @@ import {
   ShieldCheck,
   User,
   ArrowLeft,
+  Info,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+const REQUIREMENT_STATUS_STYLES: Record<RequirementStatus, string> = {
+  DRAFT: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300',
+  OPEN: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  MATCHING: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  FILLED: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  COMPLETED: 'bg-black text-white dark:bg-white dark:text-black',
+  CANCELLED: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  EXPIRED: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300',
+};
 
 const STATUS_STYLES: Record<RequirementCandidateStatus, string> = {
   RECOMMENDED:
@@ -50,12 +65,31 @@ const STATUS_STYLES: Record<RequirementCandidateStatus, string> = {
     'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500',
 };
 
+// Coloured left edge so a candidate's state reads at a glance.
+const STATUS_ACCENT: Record<RequirementCandidateStatus, string> = {
+  RECOMMENDED: 'border-l-neutral-400 dark:border-l-neutral-600',
+  SHORTLISTED: 'border-l-blue-500',
+  PRIMARY: 'border-l-purple-500',
+  BACKUP: 'border-l-amber-500',
+  OFFERED: 'border-l-blue-500',
+  ASSIGNED: 'border-l-green-500',
+  REJECTED: 'border-l-red-500',
+  EXPIRED: 'border-l-neutral-300 dark:border-l-neutral-700',
+};
+
 const ASSIGNABLE_STATUSES: RequirementCandidateStatus[] = [
   'RECOMMENDED',
   'SHORTLISTED',
   'PRIMARY',
   'BACKUP',
 ];
+
+function scoreTone(score?: number | null) {
+  if (score == null) return 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400';
+  if (score >= 80) return 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300';
+  if (score >= 60) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300';
+  return 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300';
+}
 
 function formatAssignmentMode(mode: string) {
   switch (mode) {
@@ -82,14 +116,16 @@ const SHIFT_TIMING_LABELS: Record<ShiftTiming, string> = {
 function RequirementInfo({
   label,
   children,
+  className = '',
 }: {
   label: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${className}`}>
       <p className="text-xs text-neutral-500">{label}</p>
-      <p className="text-sm font-medium break-words">{children}</p>
+      <p className="mt-0.5 text-sm font-medium break-words">{children}</p>
     </div>
   );
 }
@@ -101,6 +137,67 @@ function formatDateTime(value?: string | null) {
         timeStyle: 'short',
       })
     : null;
+}
+
+/* Icon tile used for the key facts at the top of the page. */
+function FactTile({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon: LucideIcon;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-lg bg-neutral-50 p-3 dark:bg-neutral-900/60">
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white text-neutral-600 shadow-sm dark:bg-neutral-800 dark:text-neutral-300">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs text-neutral-500">{label}</p>
+        <p className="text-sm font-semibold break-words">{children}</p>
+      </div>
+    </div>
+  );
+}
+
+/* Section heading: icon, title, count and a one-line hint. */
+function SectionHeader({
+  icon: Icon,
+  iconClass = 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+  title,
+  count,
+  hint,
+}: {
+  icon?: LucideIcon;
+  iconClass?: string;
+  title: string;
+  count?: number;
+  hint?: string;
+}) {
+  return (
+    <CardHeader className="pb-3">
+      <div className="flex items-center gap-3">
+        {Icon && (
+          <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${iconClass}`}>
+            <Icon className="h-4 w-4" />
+          </div>
+        )}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base">{title}</CardTitle>
+            {count != null && (
+              <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                {count}
+              </span>
+            )}
+          </div>
+          {hint && <p className="mt-0.5 text-xs text-neutral-500">{hint}</p>}
+        </div>
+      </div>
+    </CardHeader>
+  );
 }
 
 export default function RequirementDetailsPage() {
@@ -209,6 +306,32 @@ export default function RequirementDetailsPage() {
     },
   });
 
+  const replacementMutation = useMutation({
+    mutationFn: ({ candidateId, reason }: { candidateId: string; reason: string }) =>
+      matchingService.requestAssignmentReplacement(id!, candidateId, reason),
+    onSuccess: async () => {
+      toast.success('Replacement requested');
+      await invalidate();
+      await queryClient.invalidateQueries({ queryKey: ['partner-dashboard-summary'] });
+    },
+    onError: (e: any) => {
+      toast.error(e.response?.data?.message || 'Failed to request replacement');
+    },
+  });
+
+  const cancelReplacementMutation = useMutation({
+    mutationFn: (replacementRequestId: string) =>
+      matchingService.cancelAssignmentReplacement(id!, replacementRequestId),
+    onSuccess: async () => {
+      toast.success('Replacement request cancelled');
+      await invalidate();
+      await queryClient.invalidateQueries({ queryKey: ['partner-dashboard-summary'] });
+    },
+    onError: (e: any) => {
+      toast.error(e.response?.data?.message || 'Failed to cancel replacement request');
+    },
+  });
+
   if (isLoading) {
     return (
       <PageLayout>
@@ -261,8 +384,17 @@ export default function RequirementDetailsPage() {
     (candidate) => candidate.status === 'OFFERED'
   );
 
+  const replacementRequests = requirement.replacementRequests ?? [];
+  const replacedCandidateIds = new Set(
+    replacementRequests
+      .filter((request) => request.status === 'RESOLVED')
+      .map((request) => request.currentAssignmentCandidateId)
+  );
   const assignedCandidates = candidates.filter(
-    (candidate) => candidate.status === 'ASSIGNED'
+    (candidate) =>
+      candidate.status === 'ASSIGNED' &&
+      !replacedCandidateIds.has(candidate.id) &&
+      ['OPEN', 'MATCHING', 'FILLED'].includes(requirement.status)
   );
 
   const backupCandidates = candidates.filter(
@@ -275,9 +407,19 @@ export default function RequirementDetailsPage() {
       candidate.status === 'SHORTLISTED'
   );
 
-  const assignedCount = candidates.filter(
-    (candidate) => candidate.status === 'ASSIGNED'
-  ).length;
+  const otherCandidates = candidates.filter(
+    (candidate) =>
+      ![
+        'PRIMARY',
+        'ASSIGNED',
+        'OFFERED',
+        'BACKUP',
+        'RECOMMENDED',
+        'SHORTLISTED',
+      ].includes(candidate.status)
+  );
+
+  const assignedCount = assignedCandidates.length;
 
   const preferredWorker = candidates.find(
     (candidate) =>
@@ -285,13 +427,83 @@ export default function RequirementDetailsPage() {
       requirement.preferredWorkerProfileId
   )?.workerProfile;
 
+  const summaryMetrics = [
+    { label: 'Candidates', value: String(candidates.length) },
+    { label: 'Assigned', value: `${assignedCount} / ${requirement.requiredWorkerCount}` },
+    { label: 'Primary', value: String(primaryCandidates.length) },
+    { label: 'Backups', value: String(backupCandidates.length) },
+  ];
+
+  const assignCandidate = (candidate: RequirementCandidate) => {
+    if (candidate.workerProfile) {
+      assignMutation.mutate(candidate.workerProfile.id);
+    }
+  };
+
+  /* Replacement controls shown inside each confirmed assignment. */
+  const renderReplacementControls = (candidate: RequirementCandidate) => {
+    const activeRequest = replacementRequests.find(
+      (request) =>
+        request.currentAssignmentCandidateId === candidate.id &&
+        ['OPEN', 'OFFERED'].includes(request.status)
+    );
+    const workerName = candidate.workerProfile?.user?.name ?? 'Worker';
+
+    if (activeRequest) {
+      return (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Badge variant="outline">Replacement {activeRequest.status.toLowerCase()}</Badge>
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => cancelReplacementMutation.mutate(activeRequest.id)}
+            disabled={cancelReplacementMutation.isPending}
+          >
+            Cancel request
+          </Button>
+        </div>
+      );
+    }
+
+    if (['OPEN', 'MATCHING', 'FILLED'].includes(requirement.status)) {
+      return (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-neutral-500">
+            Stays active until a replacement accepts.
+          </p>
+          <Button
+            size="sm"
+            className="w-full sm:w-auto"
+            disabled={replacementMutation.isPending}
+            onClick={() => {
+              const reason = window.prompt(`Why is a replacement needed for ${workerName}?`);
+              if (reason?.trim()) replacementMutation.mutate({ candidateId: candidate.id, reason: reason.trim() });
+            }}
+          >
+            Request replacement
+          </Button>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const sectionProps = {
+    onAssign: assignCandidate,
+    assigning: assignMutation.isPending,
+    navigate,
+  };
+
   return (
     <PageLayout>
-      <div className="max-w-5xl mx-auto space-y-6 px-1 sm:px-0">
+      <div className="max-w-4xl mx-auto space-y-3 px-1 sm:px-0">
 
         {/* Back */}
         <Button
           variant="ghost"
+          size="sm"
           onClick={() => navigate(-1)}
           className="-ml-2 gap-2"
         >
@@ -304,55 +516,31 @@ export default function RequirementDetailsPage() {
         ============================================================ */}
 
         <Card className="overflow-hidden">
-          <CardHeader className="pb-4">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 
-              <div className="space-y-2">
+              <div className="min-w-0">
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  <CardTitle className="text-xl sm:text-2xl">
+                <div className="flex flex-wrap items-center gap-2">
+                  <CardTitle className="text-xl sm:text-2xl break-words">
                     {requirement.subCategory?.name ??
                       'Worker Requirement'}
                   </CardTitle>
 
-                  <Badge variant="secondary">
+                  <Badge className={REQUIREMENT_STATUS_STYLES[requirement.status]}>
                     {requirement.status}
                   </Badge>
                 </div>
 
                 {requirement.category?.name && (
-                  <p className="text-sm text-neutral-500">
+                  <p className="mt-1 text-sm text-neutral-500">
                     {requirement.category.name}
                   </p>
                 )}
 
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <Badge variant="outline">
-                    {formatAssignmentMode(
-                      requirement.assignmentMode
-                    )}
-                  </Badge>
-
-                  {requirement.workMode && (
-                    <Badge variant="outline">
-                      {requirement.workMode === 'ON_SITE'
-                        ? 'On-site'
-                        : 'Remote'}
-                    </Badge>
-                  )}
-
-                  {requirement.workGeography && (
-                    <Badge variant="outline">
-                      {requirement.workGeography === 'DOMESTIC'
-                        ? 'Domestic'
-                        : 'International'}
-                    </Badge>
-                  )}
-                </div>
-
               </div>
 
-              <div className="flex gap-2 flex-shrink-0">
+              <div className="flex flex-wrap gap-2 sm:flex-shrink-0">
 
                 {requirement.status === 'DRAFT' && (
                   <Button
@@ -366,41 +554,51 @@ export default function RequirementDetailsPage() {
                   </Button>
                 )}
 
-                {requirement.status !== 'CANCELLED' &&
-                  requirement.status !== 'COMPLETED' && (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => cancelMutation.mutate()}
-                      disabled={cancelMutation.isPending}
-                    >
-                      {cancelMutation.isPending
-                        ? 'Cancelling…'
-                        : 'Cancel'}
-                    </Button>
-                  )}
+                {['DRAFT', 'OPEN', 'MATCHING', 'EXPIRED'].includes(requirement.status) && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => cancelMutation.mutate()}
+                    disabled={cancelMutation.isPending}
+                  >
+                    {cancelMutation.isPending
+                      ? 'Cancelling…'
+                      : 'Cancel'}
+                  </Button>
+                )}
 
               </div>
             </div>
           </CardHeader>
 
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <RequirementInfo label="Location">
+          <CardContent className="space-y-4">
+
+            {/* Key facts */}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <FactTile icon={MapPin} label="Location">
                 {requirement.city}
                 {requirement.state ? `, ${requirement.state}` : ''}
-              </RequirementInfo>
+              </FactTile>
 
-              <RequirementInfo label="Address">
-                {requirement.address || 'Not specified'}
-              </RequirementInfo>
-
-              <RequirementInfo label="Joining Date">
+              <FactTile icon={CalendarDays} label="Joining Date">
                 {new Date(requirement.joiningDate).toLocaleDateString()}
-              </RequirementInfo>
+              </FactTile>
 
-              <RequirementInfo label="Required Workers">
+              <FactTile icon={Users} label="Required Workers">
                 {requirement.requiredWorkerCount}
+              </FactTile>
+
+              <FactTile icon={Wallet} label="Salary Budget">
+                {requirement.salaryBudget != null
+                  ? `₹${requirement.salaryBudget}/month`
+                  : 'Not specified'}
+              </FactTile>
+            </div>
+
+            {/* Other details */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-neutral-200 pt-4 dark:border-neutral-800 sm:grid-cols-4">
+              <RequirementInfo label="Address" className="col-span-2">
+                {requirement.address || 'Not specified'}
               </RequirementInfo>
 
               <RequirementInfo label="Minimum Experience">
@@ -415,13 +613,7 @@ export default function RequirementDetailsPage() {
                   : 'Not specified'}
               </RequirementInfo>
 
-              <RequirementInfo label="Salary Budget">
-                {requirement.salaryBudget != null
-                  ? `₹${requirement.salaryBudget}/month`
-                  : 'Not specified'}
-              </RequirementInfo>
-
-              <RequirementInfo label="Employment Types">
+              <RequirementInfo label="Employment Types" className="col-span-2">
                 {requirement.employmentTypes.length > 0
                   ? requirement.employmentTypes
                       .map((type) => type.replace(/_/g, ' '))
@@ -456,7 +648,7 @@ export default function RequirementDetailsPage() {
               </RequirementInfo>
 
               {requirement.preferredWorkerProfileId && (
-                <RequirementInfo label="Preferred Worker">
+                <RequirementInfo label="Preferred Worker" className="col-span-2">
                   {preferredWorker?.user?.name ??
                     'Preferred worker selected'}
                   {preferredWorker?.experience != null &&
@@ -468,6 +660,7 @@ export default function RequirementDetailsPage() {
                 </RequirementInfo>
               )}
             </div>
+
           </CardContent>
         </Card>
 
@@ -475,72 +668,16 @@ export default function RequirementDetailsPage() {
             MATCHING SUMMARY
         ============================================================ */}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-neutral-500">
-                Candidates
-              </p>
-
-              <p className="text-2xl font-bold mt-1">
-                {candidates.length}
-              </p>
-
-              <p className="text-xs text-neutral-400 mt-1">
-                matched workers
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-neutral-500">
-                Assigned
-              </p>
-
-              <p className="text-2xl font-bold mt-1">
-                {assignedCount}
-              </p>
-
-              <p className="text-xs text-neutral-400 mt-1">
-                of {requirement.requiredWorkerCount} required
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-neutral-500">
-                Primary
-              </p>
-
-              <p className="text-2xl font-bold mt-1">
-                {primaryCandidates.length}
-              </p>
-
-              <p className="text-xs text-neutral-400 mt-1">
-                recommended primary
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-neutral-500">
-                Backups
-              </p>
-
-              <p className="text-2xl font-bold mt-1">
-                {backupCandidates.length}
-              </p>
-
-              <p className="text-xs text-neutral-400 mt-1">
-                backup candidates
-              </p>
-            </CardContent>
-          </Card>
-
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {summaryMetrics.map((metric) => (
+            <div
+              key={metric.label}
+              className="rounded-lg border border-neutral-200 px-3 py-2.5 dark:border-neutral-800"
+            >
+              <p className="text-xs text-neutral-500">{metric.label}</p>
+              <p className="mt-0.5 text-xl font-bold leading-tight">{metric.value}</p>
+            </div>
+          ))}
         </div>
 
         {/* ============================================================
@@ -548,24 +685,22 @@ export default function RequirementDetailsPage() {
         ============================================================ */}
 
         <Card>
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-
+          <CardContent className="p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-lg">
-                  Find Matching Workers
-                </CardTitle>
-
-                <p className="text-sm text-neutral-500 mt-1">
-                  Generate eligible workers based on the requirement.
+                <p className="text-sm font-semibold">Find matching workers</p>
+                <p className="text-xs text-neutral-500">
+                  {candidates.length === 0
+                    ? 'No matches yet. Generate matches to find eligible workers.'
+                    : `${candidates.length} eligible candidate${candidates.length !== 1 ? 's' : ''} found.`}
                 </p>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
 
                 <Button
-                  variant="outline"
-                  className="gap-2"
+                  size="sm"
+                  className="w-full gap-2 sm:w-auto"
                   onClick={() => matchMutation.mutate()}
                   disabled={matchMutation.isPending}
                 >
@@ -583,8 +718,9 @@ export default function RequirementDetailsPage() {
                 </Button>
 
                 <Button
+                  size="sm"
                   variant="outline"
-                  className="gap-2"
+                  className="w-full gap-2 sm:w-auto"
                   onClick={() => poolMutation.mutate()}
                   disabled={
                     poolMutation.isPending ||
@@ -600,338 +736,180 @@ export default function RequirementDetailsPage() {
 
               </div>
             </div>
-          </CardHeader>
+          </CardContent>
+        </Card>
 
-          <CardContent>
+        {/* ============================================================
+            CONFIRMED ASSIGNMENTS (with replacement controls)
+        ============================================================ */}
 
-            {candidates.length === 0 ? (
-              <div className="border border-dashed rounded-xl py-12 text-center">
-
-                <div className="w-12 h-12 mx-auto rounded-full bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center">
-                  <Users className="w-5 h-5 text-neutral-400" />
-                </div>
-
-                <h3 className="font-semibold mt-4">
-                  No matching workers yet
-                </h3>
-
-                <p className="text-sm text-neutral-500 mt-1 max-w-md mx-auto">
-                  Generate matches to find verified and eligible
-                  workers for this requirement.
-                </p>
-
-                <Button
-                  className="mt-4 gap-2"
-                  onClick={() => matchMutation.mutate()}
-                  disabled={matchMutation.isPending}
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Generate Matches
-                </Button>
-
-              </div>
+        <Card>
+          <SectionHeader
+            icon={CheckCircle2}
+            iconClass="bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-300"
+            title="Confirmed Assignments"
+            count={assignedCandidates.length}
+          />
+          <CardContent className="space-y-2">
+            {assignedCandidates.length === 0 ? (
+              <p className="text-sm text-neutral-500">
+                None yet. Replacement options appear after a worker accepts an assignment.
+              </p>
             ) : (
-              <div className="space-y-2 text-sm text-neutral-500">
-                <p>
-                  {candidates.length} eligible candidate
-                  {candidates.length !== 1 ? 's' : ''} found.
-                </p>
-              </div>
+              assignedCandidates.map((candidate) => (
+                <CandidateCard
+                  key={candidate.id}
+                  candidate={candidate}
+                  onAssign={() => undefined}
+                  assigning={assignMutation.isPending}
+                  navigate={navigate}
+                  footer={renderReplacementControls(candidate)}
+                />
+              ))
             )}
-
           </CardContent>
         </Card>
 
         {/* ============================================================
-            PRIMARY MATCHES
+            OFFERS / PRIMARY / RECOMMENDED / BACKUP / OTHER
         ============================================================ */}
 
-        {primaryCandidates.length > 0 && (
+        <CandidateSection
+          title="Assignment Offers"
+          hint="Waiting for workers to accept."
+          icon={UserCheck}
+          iconClass="bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300"
+          candidates={offeredCandidates}
+          {...sectionProps}
+        />
+
+        <CandidateSection
+          title="Primary Matches"
+          hint="Best candidates for this requirement."
+          icon={UserCheck}
+          iconClass="bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-300"
+          candidates={primaryCandidates}
+          {...sectionProps}
+        />
+
+        <CandidateSection
+          title="Recommended Candidates"
+          hint="Ranked by match score."
+          icon={ShieldCheck}
+          iconClass="bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300"
+          candidates={recommendedCandidates}
+          {...sectionProps}
+        />
+
+        <CandidateSection
+          title="Backup Pool"
+          hint="Available if the primary worker cannot continue."
+          icon={Layers}
+          iconClass="bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-300"
+          candidates={backupCandidates}
+          {...sectionProps}
+        />
+
+        <CandidateSection
+          title="Other Candidates"
+          candidates={otherCandidates}
+          {...sectionProps}
+        />
+
+        {/* ============================================================
+            REPLACEMENT HISTORY
+        ============================================================ */}
+
+        {replacementRequests.length > 0 && (
           <Card>
-
-            <CardHeader>
-              <div className="flex items-center gap-3">
-
-                <div className="w-9 h-9 rounded-lg bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
-                  <UserCheck className="w-4 h-4 text-purple-600 dark:text-purple-300" />
+            <SectionHeader
+              title="Replacement History"
+              count={replacementRequests.length}
+            />
+            <CardContent className="space-y-2">
+              {replacementRequests.map((request) => (
+                <div key={request.id} className="rounded-lg bg-neutral-50 px-3 py-2 text-sm dark:bg-neutral-900">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={request.status === 'RESOLVED' ? 'default' : request.status === 'CANCELLED' ? 'secondary' : 'outline'}>{request.status.toLowerCase()}</Badge>
+                    <span>{request.currentAssignmentCandidate?.workerProfile.user.name ?? 'Original worker'}</span>
+                    {request.replacementCandidate && <span>→ {request.replacementCandidate.workerProfile.user.name}</span>}
+                  </div>
+                  <p className="mt-1 text-xs text-neutral-500">{request.reason}</p>
                 </div>
-
-                <div>
-                  <CardTitle className="text-lg">
-                    Primary Matches
-                  </CardTitle>
-
-                  <p className="text-sm text-neutral-500 mt-0.5">
-                    Best candidates for this requirement.
-                  </p>
-                </div>
-
-              </div>
-            </CardHeader>
-
-            <CardContent className="space-y-3">
-
-              {primaryCandidates.map((candidate) => (
-                <CandidateCard
-                  key={candidate.id}
-                  candidate={candidate}
-                  onAssign={() => {
-                    if (candidate.workerProfile) {
-                      assignMutation.mutate(
-                        candidate.workerProfile.id
-                      );
-                    }
-                  }}
-                  assigning={assignMutation.isPending}
-                  navigate={navigate}
-                />
-              ))}
-
-            </CardContent>
-
-          </Card>
-        )}
-
-        {offeredCandidates.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Assignment Offers</CardTitle>
-              <p className="text-sm text-neutral-500">
-                These workers have been offered the assignment and have not accepted yet.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {offeredCandidates.map((candidate) => (
-                <CandidateCard
-                  key={candidate.id}
-                  candidate={candidate}
-                  onAssign={() => undefined}
-                  assigning={assignMutation.isPending}
-                  navigate={navigate}
-                />
-              ))}
-            </CardContent>
-          </Card>
-        )}
-
-        {assignedCandidates.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Confirmed Assignments</CardTitle>
-              <p className="text-sm text-neutral-500">
-                These workers accepted their assignment offers.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {assignedCandidates.map((candidate) => (
-                <CandidateCard
-                  key={candidate.id}
-                  candidate={candidate}
-                  onAssign={() => undefined}
-                  assigning={assignMutation.isPending}
-                  navigate={navigate}
-                />
               ))}
             </CardContent>
           </Card>
         )}
 
         {/* ============================================================
-            RECOMMENDED
+            HOW MATCHING WORKS
         ============================================================ */}
 
-        {recommendedCandidates.length > 0 && (
-          <Card>
-
-            <CardHeader>
-              <div className="flex items-center gap-3">
-
-                <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                  <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-300" />
-                </div>
-
-                <div>
-                  <CardTitle className="text-lg">
-                    Recommended Candidates
-                  </CardTitle>
-
-                  <p className="text-sm text-neutral-500 mt-0.5">
-                    Workers ranked according to their match score.
-                  </p>
-                </div>
-
-              </div>
-            </CardHeader>
-
-            <CardContent className="space-y-3">
-
-              {recommendedCandidates.map((candidate) => (
-                <CandidateCard
-                  key={candidate.id}
-                  candidate={candidate}
-                  onAssign={() => {
-                    if (candidate.workerProfile) {
-                      assignMutation.mutate(
-                        candidate.workerProfile.id
-                      );
-                    }
-                  }}
-                  assigning={assignMutation.isPending}
-                  navigate={navigate}
-                />
-              ))}
-
-            </CardContent>
-
-          </Card>
-        )}
-
-        {/* ============================================================
-            BACKUP POOL
-        ============================================================ */}
-
-        {backupCandidates.length > 0 && (
-          <Card>
-
-            <CardHeader>
-              <div className="flex items-center gap-3">
-
-                <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
-                  <Layers className="w-4 h-4 text-amber-600 dark:text-amber-300" />
-                </div>
-
-                <div>
-                  <CardTitle className="text-lg">
-                    Backup Pool
-                  </CardTitle>
-
-                  <p className="text-sm text-neutral-500 mt-0.5">
-                    Backup workers available if the primary worker
-                    cannot continue.
-                  </p>
-                </div>
-
-              </div>
-            </CardHeader>
-
-            <CardContent className="space-y-3">
-
-              {backupCandidates.map((candidate) => (
-                <CandidateCard
-                  key={candidate.id}
-                  candidate={candidate}
-                  onAssign={() => {
-                    if (candidate.workerProfile) {
-                      assignMutation.mutate(
-                        candidate.workerProfile.id
-                      );
-                    }
-                  }}
-                  assigning={assignMutation.isPending}
-                  navigate={navigate}
-                />
-              ))}
-
-            </CardContent>
-
-          </Card>
-        )}
-
-        {/* ============================================================
-            ALL OTHER CANDIDATES
-        ============================================================ */}
-
-        {candidates.filter(
-          (candidate) =>
-            ![
-              'PRIMARY',
-              'ASSIGNED',
-              'OFFERED',
-              'BACKUP',
-              'RECOMMENDED',
-              'SHORTLISTED',
-            ].includes(candidate.status)
-        ).length > 0 && (
-          <Card>
-
-            <CardHeader>
-              <CardTitle className="text-lg">
-                Other Candidates
-              </CardTitle>
-            </CardHeader>
-
-            <CardContent className="space-y-3">
-
-              {candidates
-                .filter(
-                  (candidate) =>
-                    ![
-                      'PRIMARY',
-                      'ASSIGNED',
-                      'OFFERED',
-                      'BACKUP',
-                      'RECOMMENDED',
-                      'SHORTLISTED',
-                    ].includes(candidate.status)
-                )
-                .map((candidate) => (
-                  <CandidateCard
-                    key={candidate.id}
-                    candidate={candidate}
-                    onAssign={() => {
-                      if (candidate.workerProfile) {
-                        assignMutation.mutate(
-                          candidate.workerProfile.id
-                        );
-                      }
-                    }}
-                    assigning={assignMutation.isPending}
-                    navigate={navigate}
-                  />
-                ))}
-
-            </CardContent>
-
-          </Card>
-        )}
-
-        {/* ============================================================
-            ASSIGNMENT INFO
-        ============================================================ */}
-
-        <Card className="bg-neutral-50 dark:bg-neutral-900/40">
-
-          <CardContent className="p-5">
-
-            <div className="flex items-start gap-3">
-
-              <CheckCircle2 className="w-5 h-5 text-neutral-600 dark:text-neutral-300 mt-0.5 flex-shrink-0" />
-
-              <div>
-
-                <p className="font-medium text-sm">
-                  How matching works
-                </p>
-
-                <p className="text-sm text-neutral-500 mt-1 leading-relaxed">
-                  Candidates are ranked based on the requirement
-                  and worker profile. Build the assignment pool to
-                  organize the best candidates as primary and backup
-                  workers. Sending an assignment offer does not confirm
-                  the worker; the assignment is confirmed only after the
-                  worker accepts.
-                </p>
-
-              </div>
-
-            </div>
-
-          </CardContent>
-
-        </Card>
+        <div className="flex items-start gap-2 px-1 pb-2 text-xs leading-relaxed text-neutral-500">
+          <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+          <p>
+            <span className="font-medium text-neutral-600 dark:text-neutral-300">How matching works: </span>
+            Candidates are ranked based on the requirement
+            and worker profile. Build the assignment pool to
+            organize the best candidates as primary and backup
+            workers. Sending an assignment offer does not confirm
+            the worker; the assignment is confirmed only after the
+            worker accepts.
+          </p>
+        </div>
 
       </div>
     </PageLayout>
+  );
+}
+
+
+/* ================================================================
+   CANDIDATE SECTION
+================================================================ */
+
+function CandidateSection({
+  title,
+  hint,
+  icon,
+  iconClass,
+  candidates,
+  onAssign,
+  assigning,
+  navigate,
+}: {
+  title: string;
+  hint?: string;
+  icon?: LucideIcon;
+  iconClass?: string;
+  candidates: RequirementCandidate[];
+  onAssign: (candidate: RequirementCandidate) => void;
+  assigning: boolean;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  if (candidates.length === 0) return null;
+
+  return (
+    <Card>
+      <SectionHeader
+        icon={icon}
+        iconClass={iconClass}
+        title={title}
+        count={candidates.length}
+        hint={hint}
+      />
+      <CardContent className="space-y-2">
+        {candidates.map((candidate) => (
+          <CandidateCard
+            key={candidate.id}
+            candidate={candidate}
+            onAssign={() => onAssign(candidate)}
+            assigning={assigning}
+            navigate={navigate}
+          />
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -945,11 +923,13 @@ function CandidateCard({
   onAssign,
   assigning,
   navigate,
+  footer,
 }: {
   candidate: RequirementCandidate;
   onAssign: () => void;
   assigning: boolean;
   navigate: ReturnType<typeof useNavigate>;
+  footer?: React.ReactNode;
 }) {
   const { user } = useAuth();
   const worker = candidate.workerProfile;
@@ -968,185 +948,139 @@ function CandidateCard({
     .map((reason) => reason.trim())
     .filter(Boolean) ?? [];
 
+  const showProfile = !!worker && user?.role !== 'PARTNER';
+  const showActions = showProfile || canAssign;
+
   return (
     <div
-      className="
-        rounded-xl
-        border border-neutral-200 dark:border-neutral-800
-        p-4
-        hover:bg-neutral-50 dark:hover:bg-neutral-900/50
-        transition-colors
-      "
+      className={`rounded-lg border border-l-4 border-neutral-200 p-3 transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900/50 ${STATUS_ACCENT[candidate.status]}`}
     >
 
-      <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+      <div className="flex items-start gap-3">
 
-        {/* Worker */}
-        <div className="flex items-start gap-3 min-w-0 flex-1">
+        {/* Avatar */}
+        {worker?.profilePhotoUrl ? (
+          <img
+            src={worker.profilePhotoUrl}
+            alt={worker.user?.name ?? 'Worker'}
+            className="h-11 w-11 flex-shrink-0 rounded-full border border-neutral-200 object-cover dark:border-neutral-700"
+          />
+        ) : (
+          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800">
+            <User className="h-5 w-5 text-neutral-400" />
+          </div>
+        )}
 
-          {worker?.profilePhotoUrl ? (
-            <img
-              src={worker.profilePhotoUrl}
-              alt={worker.user?.name ?? 'Worker'}
-              className="
-                w-12 h-12 rounded-full object-cover
-                border border-neutral-200 dark:border-neutral-700
-                flex-shrink-0
-              "
-            />
-          ) : (
-            <div
-              className="
-                w-12 h-12 rounded-full
-                bg-neutral-100 dark:bg-neutral-800
-                flex items-center justify-center
-                flex-shrink-0
-              "
-            >
-              <User className="w-5 h-5 text-neutral-400" />
+        {/* Worker details */}
+        <div className="min-w-0 flex-1">
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold break-words">
+              {worker?.user?.name ?? 'Unknown worker'}
+            </span>
+            <Badge className={`text-xs ${STATUS_STYLES[candidate.status]}`}>
+              {candidate.status}
+            </Badge>
+          </div>
+
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
+            {worker?.city && (
+              <span className="flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                {worker.city}
+              </span>
+            )}
+            {worker?.experience != null && (
+              <span>{worker.experience} yrs experience</span>
+            )}
+            {worker?.rating != null && worker.rating > 0 && (
+              <span className="flex items-center gap-1">
+                <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                {worker.rating.toFixed(1)}
+              </span>
+            )}
+            {worker?.isAvailable && (
+              <span className="text-green-600 dark:text-green-400">Available</span>
+            )}
+          </div>
+
+          {skillNames.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {skillNames.slice(0, 4).map((skill) => (
+                <Badge key={skill} variant="secondary" className="text-xs">
+                  {skill}
+                </Badge>
+              ))}
+              {skillNames.length > 4 && (
+                <Badge variant="outline" className="text-xs">
+                  +{skillNames.length - 4}
+                </Badge>
+              )}
             </div>
           )}
 
-          <div className="min-w-0 flex-1">
-
-            <div className="flex flex-wrap items-center gap-2">
-
-              <span className="font-semibold">
-                {worker?.user?.name ?? 'Unknown worker'}
-              </span>
-
-              <Badge
-                className={`text-xs ${STATUS_STYLES[candidate.status]}`}
-              >
-                {candidate.status}
-              </Badge>
-
-            </div>
-
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-neutral-500">
-
-              {worker?.city && (
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-3 h-3" />
-                  {worker.city}
-                </span>
-              )}
-
-              {worker?.experience != null && (
-                <span>
-                  {worker.experience} yrs experience
-                </span>
-              )}
-
-              {worker?.rating != null && worker.rating > 0 && (
-                <span className="flex items-center gap-1">
-                  <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                  {worker.rating.toFixed(1)}
-                </span>
-              )}
-
-              {worker?.isAvailable && (
-                <span className="text-green-600 dark:text-green-400">
-                  Available
-                </span>
-              )}
-
-            </div>
-
-            {/* Skills */}
-            {skillNames.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-
-                {skillNames.slice(0, 5).map((skill) => (
-                  <Badge
-                    key={skill}
-                    variant="secondary"
-                    className="text-xs"
-                  >
-                    {skill}
-                  </Badge>
-                ))}
-
-                {skillNames.length > 5 && (
-                  <Badge
-                    variant="outline"
-                    className="text-xs"
-                  >
-                    +{skillNames.length - 5}
-                  </Badge>
-                )}
-
-              </div>
-            )}
-
-            {/* Match reason */}
-            {matchReasons.length > 0 && (
-              <div className="mt-3">
-                <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                  Why matched
-                </p>
-                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-neutral-500">
-                  {matchReasons.map((reason) => (
-                    <li key={reason}>{reason}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {(candidate.offeredAt || candidate.acceptedAt || candidate.assignedAt) && (
-              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
-                {candidate.offeredAt && (
-                  <span>Offered: {formatDateTime(candidate.offeredAt)}</span>
-                )}
-                {candidate.acceptedAt && (
-                  <span>Accepted: {formatDateTime(candidate.acceptedAt)}</span>
-                )}
-                {candidate.assignedAt && (
-                  <span>Assigned: {formatDateTime(candidate.assignedAt)}</span>
-                )}
-              </div>
-            )}
-
-            {candidate.status === 'OFFERED' && (
-              <p className="mt-2 text-xs font-medium text-blue-700 dark:text-blue-300">
-                Waiting for the worker to accept this offer.
+          {matchReasons.length > 0 && (
+            <div className="mt-2.5">
+              <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                Why matched
               </p>
-            )}
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {matchReasons.map((reason) => (
+                  <span
+                    key={reason}
+                    className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-2 py-0.5 text-xs text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+                  >
+                    <CheckCircle2 className="h-3 w-3 flex-shrink-0 text-green-500" />
+                    {reason}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
-          </div>
+          {(candidate.offeredAt || candidate.acceptedAt || candidate.assignedAt) && (
+            <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
+              {candidate.offeredAt && (
+                <span>Offered: {formatDateTime(candidate.offeredAt)}</span>
+              )}
+              {candidate.acceptedAt && (
+                <span>Accepted: {formatDateTime(candidate.acceptedAt)}</span>
+              )}
+              {candidate.assignedAt && (
+                <span>Assigned: {formatDateTime(candidate.assignedAt)}</span>
+              )}
+            </div>
+          )}
+
+          {candidate.status === 'OFFERED' && (
+            <p className="mt-2 text-xs font-medium text-blue-700 dark:text-blue-300">
+              Waiting for the worker to accept this offer.
+            </p>
+          )}
 
         </div>
 
         {/* Match score */}
-        <div className="lg:w-36 flex-shrink-0">
-
-          <div className="flex items-center justify-between lg:justify-center gap-3">
-
-            <div className="text-left lg:text-center">
-
-              <p className="text-xs text-neutral-500">
-                Match Score
-              </p>
-
-              <p className="text-xl font-bold mt-0.5">
-                {candidate.matchScore != null
-                  ? `${candidate.matchScore}%`
-                  : '—'}
-              </p>
-
-            </div>
-
-          </div>
-
+        <div className={`flex-shrink-0 rounded-lg px-3 py-2 text-center ${scoreTone(candidate.matchScore)}`}>
+          <p className="text-lg font-bold leading-none">
+            {candidate.matchScore != null
+              ? `${candidate.matchScore}%`
+              : '—'}
+          </p>
+          <p className="mt-1 text-xs opacity-80">match</p>
         </div>
 
-        {/* Actions */}
-        <div className="flex gap-2 flex-shrink-0">
+      </div>
 
-          {worker && user?.role !== 'PARTNER' && (
+      {/* Actions */}
+      {showActions && (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+
+          {showProfile && worker && (
             <Button
               variant="outline"
               size="sm"
+              className="w-full sm:w-auto"
               onClick={() =>
                 navigate(`/customer/workers/${worker.id}`)
               }
@@ -1158,19 +1092,25 @@ function CandidateCard({
           {canAssign && (
             <Button
               size="sm"
-              className="gap-1.5"
+              className="w-full gap-1.5 sm:w-auto"
               onClick={onAssign}
               disabled={assigning}
             >
-              <UserCheck className="w-3.5 h-3.5" />
+              <UserCheck className="h-3.5 w-3.5" />
 
               {assigning ? 'Sending offer…' : 'Send Assignment Offer'}
             </Button>
           )}
 
         </div>
+      )}
 
-      </div>
+      {/* Optional footer (used for replacement controls) */}
+      {footer && (
+        <div className="mt-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+          {footer}
+        </div>
+      )}
 
     </div>
   );

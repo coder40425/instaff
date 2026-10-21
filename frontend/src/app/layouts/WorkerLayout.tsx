@@ -2,12 +2,14 @@ import { Link, useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
 import { ThemeToggle } from '../components/ThemeToggle';
-import { Home, User, Calendar, MapPin, DollarSign, LogOut, Menu, X, ChevronRight } from 'lucide-react';
+import { Home, User, Calendar, MapPin, DollarSign, LogOut, Menu, X, ChevronRight, ClipboardList, Building2 } from 'lucide-react';
 import { useState } from 'react';
 
 const navItems = [
   { path: '/worker', icon: Home, label: 'Dashboard' },
   { path: '/worker/bookings', icon: Calendar, label: 'My Bookings' },
+  { path: '/worker/requirements', icon: ClipboardList, label: 'My Requirements' },
+  { path: '/worker/partners', icon: Building2, label: 'My Partners' },
   { path: '/worker/earnings', icon: DollarSign, label: 'Earnings' },
   { path: '/worker/location', icon: MapPin, label: 'Location' },
   { path: '/worker/profile', icon: User, label: 'Profile' },
@@ -97,7 +99,8 @@ export default function WorkerLayout({ children }: { children: React.ReactNode }
 
           <div className="p-3 space-y-0.5">
             {navItems.map((item) => {
-              const active = location.pathname === item.path;
+              const active = location.pathname === item.path ||
+                (item.path !== '/worker' && location.pathname.startsWith(`${item.path}/`));
               return (
                 <Link
                   key={item.path}

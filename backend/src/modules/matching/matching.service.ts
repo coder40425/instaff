@@ -58,10 +58,6 @@ export const findMatchingWorkers = async (
 ): Promise<MatchResult[]> => {
   const workers = await prisma.workerProfile.findMany({
     where: {
-      isVerified: true,
-      isSuspended: false,
-      isAvailable: true,
-
       experience: {
         gte: requirement.minExperience,
       },
@@ -107,9 +103,42 @@ export const findMatchingWorkers = async (
     include: workerInclude,
   });
 
+  const [activeBookings, activeAssignments] = await Promise.all([
+    prisma.booking.findMany({
+      where: {
+        workerId: { in: workers.map((worker) => worker.userId) },
+        status: { in: ["ACCEPTED", "IN_PROGRESS"] },
+      },
+      select: { workerId: true },
+    }),
+    prisma.requirementCandidate.findMany({
+      where: {
+        workerProfileId: { in: workers.map((worker) => worker.id) },
+        status: "ASSIGNED",
+        replacementRequestsCurrent: { none: { status: "RESOLVED" } },
+        requirement: { status: { in: ["OPEN", "MATCHING", "FILLED"] } },
+      },
+      select: { workerProfileId: true },
+    }),
+  ]);
+  const activeBookingWorkerIds = new Set(
+    activeBookings.map((booking) => booking.workerId)
+  );
+  const activeRequirementAssignmentIds = new Set(
+    activeAssignments.map((assignment) => assignment.workerProfileId)
+  );
+  const eligibleWorkers = workers.filter(
+    (worker) =>
+      worker.isVerified &&
+      !worker.isSuspended &&
+      worker.isAvailable &&
+      !activeBookingWorkerIds.has(worker.userId) &&
+      !activeRequirementAssignmentIds.has(worker.id)
+  );
+
   const matches: MatchResult[] = [];
 
-  for (const worker of workers) {
+  for (const worker of eligibleWorkers) {
     let score = 0;
     const reasons: string[] = [];
 
@@ -240,7 +269,7 @@ export const findMatchingWorkers = async (
   }
 
   const workerRatings = new Map(
-    workers.map((worker) => [
+    eligibleWorkers.map((worker) => [
       worker.id,
       worker.rating ?? 0,
     ])
@@ -258,6 +287,85 @@ export const findMatchingWorkers = async (
   });
 
   return matches;
+};
+
+export const getRequirementMatchingExclusionSummary = async (
+  requirement: RequirementForMatching
+) => {
+  const workers = await prisma.workerProfile.findMany({
+    where: {
+      experience: { gte: requirement.minExperience },
+      skills: { some: { subCategoryId: requirement.subCategoryId } },
+      ...(requirement.assignmentMode === "PREFERRED_SINGLE" &&
+      requirement.preferredWorkerProfileId
+        ? { id: requirement.preferredWorkerProfileId }
+        : {}),
+      OR: [
+        { city: { equals: requirement.city, mode: "insensitive" } },
+        {
+          locations: {
+            some: { city: { equals: requirement.city, mode: "insensitive" } },
+          },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      userId: true,
+      isVerified: true,
+      isSuspended: true,
+      isAvailable: true,
+    },
+  });
+
+  if (!workers.length) {
+    return "No workers meet the requirement's subcategory, minimum experience, city/work-location and preferred-worker criteria.";
+  }
+
+  const [activeBookings, activeAssignments] = await Promise.all([
+    prisma.booking.findMany({
+      where: {
+        workerId: { in: workers.map((worker) => worker.userId) },
+        status: { in: ["ACCEPTED", "IN_PROGRESS"] },
+      },
+      select: { workerId: true },
+    }),
+    prisma.requirementCandidate.findMany({
+      where: {
+        workerProfileId: { in: workers.map((worker) => worker.id) },
+        status: "ASSIGNED",
+        replacementRequestsCurrent: { none: { status: "RESOLVED" } },
+        requirement: { status: { in: ["OPEN", "MATCHING", "FILLED"] } },
+      },
+      select: { workerProfileId: true },
+    }),
+  ]);
+  const activeBookingIds = new Set(activeBookings.map(({ workerId }) => workerId));
+  const activeAssignmentIds = new Set(
+    activeAssignments.map(({ workerProfileId }) => workerProfileId)
+  );
+  const reasons: string[] = [];
+  const bookedCount = workers.filter((worker) => activeBookingIds.has(worker.userId)).length;
+  const assignedCount = workers.filter((worker) => activeAssignmentIds.has(worker.id)).length;
+  const unverifiedCount = workers.filter((worker) => !worker.isVerified).length;
+  const suspendedCount = workers.filter((worker) => worker.isSuspended).length;
+  const unavailableCount = workers.filter((worker) => !worker.isAvailable).length;
+
+  if (bookedCount) {
+    reasons.push(
+      `${bookedCount} potential worker(s) have an active booking in ACCEPTED or IN_PROGRESS status; scheduled dates do not automatically clear it`
+    );
+  }
+  if (assignedCount) {
+    reasons.push(`${assignedCount} potential worker(s) have an active requirement assignment`);
+  }
+  if (unverifiedCount) reasons.push(`${unverifiedCount} potential worker(s) are not verified`);
+  if (suspendedCount) reasons.push(`${suspendedCount} potential worker(s) are suspended`);
+  if (unavailableCount) reasons.push(`${unavailableCount} potential worker(s) are marked unavailable`);
+
+  return reasons.length
+    ? `No eligible workers remain: ${reasons.join("; ")}.`
+    : "No eligible workers remain in the current matching pool.";
 };
 
 // ── Generate Requirement Matches ─────────────────────────────────────────────
@@ -309,112 +417,85 @@ export const generateRequirementMatches = async (
         })
       : null;
 
-  const existingCandidates =
-    await prisma.requirementCandidate.findMany({
+  return prisma.$transaction(async (tx) => {
+    // Serialize matching against cancellation and assignment transitions.
+    const matching = await tx.requirement.updateMany({
       where: {
-        requirementId,
+        id: requirementId,
+        status: { in: ["OPEN", "MATCHING"] },
       },
+      data: { status: "MATCHING" },
+    });
+    if (matching.count !== 1) {
+      throw new Error("Only open requirements can be matched");
+    }
+
+    const existingCandidates = await tx.requirementCandidate.findMany({
+      where: { requirementId },
+      select: { workerProfileId: true, status: true },
+    });
+    const existingStatus = new Map(
+      existingCandidates.map((candidate) => [
+        candidate.workerProfileId,
+        candidate.status,
+      ])
+    );
+
+    for (let index = 0; index < matches.length; index++) {
+      const match = matches[index];
+      const previousStatus = existingStatus.get(match.workerProfileId);
+
+      // Never destroy a candidate's progress when matching runs again.
+      const shouldPreserveStatus =
+        previousStatus === "SHORTLISTED" ||
+        previousStatus === "PRIMARY" ||
+        previousStatus === "BACKUP" ||
+        previousStatus === "OFFERED" ||
+        previousStatus === "ASSIGNED" ||
+        previousStatus === "REJECTED" ||
+        previousStatus === "EXPIRED";
+
+      await tx.requirementCandidate.upsert({
+        where: {
+          requirementId_workerProfileId: {
+            requirementId,
+            workerProfileId: match.workerProfileId,
+          },
+        },
+        create: {
+          requirementId,
+          workerProfileId: match.workerProfileId,
+          status: "RECOMMENDED",
+          matchScore: match.score,
+          matchReason: match.reason,
+          rank: index + 1,
+          partnerId: owningPartner?.id ?? match.partnerId,
+        },
+        update: {
+          matchScore: match.score,
+          matchReason: match.reason,
+          rank: index + 1,
+          ...(shouldPreserveStatus ? {} : { status: "RECOMMENDED" }),
+        },
+      });
+    }
+
+    return tx.requirementCandidate.findMany({
+      where: { requirementId },
       select: {
+        id: true,
+        requirementId: true,
         workerProfileId: true,
         status: true,
+        matchScore: true,
+        matchReason: true,
+        rank: true,
+        assignedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        workerProfile: { select: customerWorkerSelect },
       },
+      orderBy: { rank: "asc" },
     });
-
-  const existingStatus = new Map(
-    existingCandidates.map((candidate) => [
-      candidate.workerProfileId,
-      candidate.status,
-    ])
-  );
-
-  await prisma.requirement.update({
-    where: {
-      id: requirementId,
-    },
-    data: {
-      status: "MATCHING",
-    },
   });
-
-  for (
-    let index = 0;
-    index < matches.length;
-    index++
-  ) {
-    const match = matches[index];
-
-    const previousStatus =
-      existingStatus.get(match.workerProfileId);
-
-    // Never destroy a candidate's progress
-    // when matching runs again.
-    const shouldPreserveStatus =
-      previousStatus === "SHORTLISTED" ||
-      previousStatus === "PRIMARY" ||
-      previousStatus === "BACKUP" ||
-      previousStatus === "OFFERED" ||
-      previousStatus === "ASSIGNED" ||
-      previousStatus === "REJECTED" ||
-      previousStatus === "EXPIRED";
-
-    await prisma.requirementCandidate.upsert({
-      where: {
-        requirementId_workerProfileId: {
-          requirementId,
-          workerProfileId:
-            match.workerProfileId,
-        },
-      },
-
-      create: {
-        requirementId,
-        workerProfileId:
-          match.workerProfileId,
-        status: "RECOMMENDED",
-        matchScore: match.score,
-        matchReason: match.reason,
-        rank: index + 1,
-        partnerId: owningPartner?.id ?? match.partnerId,
-      },
-
-      update: {
-        matchScore: match.score,
-        matchReason: match.reason,
-        rank: index + 1,
-
-        ...(shouldPreserveStatus
-          ? {}
-          : {
-              status: "RECOMMENDED",
-            }),
-      },
-    });
-  }
-
-  return prisma.requirementCandidate.findMany({
-  where: {
-    requirementId,
-  },
-
-  select: {
-    id: true,
-    requirementId: true,
-    workerProfileId: true,
-    status: true,
-    matchScore: true,
-    matchReason: true,
-    rank: true,
-    assignedAt: true,
-    createdAt: true,
-    updatedAt: true,
-
-    workerProfile: {
-      select: customerWorkerSelect,
-    },
-  },
-
-  orderBy: {
-    rank: "asc",
-  },
-});
 };

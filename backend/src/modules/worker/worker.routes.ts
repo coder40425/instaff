@@ -19,6 +19,7 @@ setPrimaryWorkerLocationHandler,
 getWorkerRequirementOffersHandler,
 acceptWorkerRequirementOfferHandler,
 rejectWorkerRequirementOfferHandler,
+getWorkerPartnerAssociationHandler,
 } from "./worker.controller";
 
 const router = express.Router();
@@ -61,6 +62,11 @@ router.patch(
 router.get(
   "/requirements/offers",
   getWorkerRequirementOffersHandler
+);
+
+router.get(
+  "/partner",
+  getWorkerPartnerAssociationHandler
 );
 
 router.post(

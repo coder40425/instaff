@@ -2,13 +2,14 @@ import { MapPin, Star, UserRound } from 'lucide-react';
 import { Badge } from '../badge';
 import { Button } from '../button';
 import { Card, CardContent } from '../card';
-import type { PublicWorkerProfile } from '../../../types';
+import type { PartnerAssociatedWorker } from '../../../types/partner';
+import { PartnerWorkerStatusBadge } from './PartnerStatusBadge';
 
 export function PartnerWorkerCard({
   worker,
   onRemove,
 }: {
-  worker: PublicWorkerProfile;
+  worker: PartnerAssociatedWorker;
   onRemove: () => void;
 }) {
   const name = worker.user?.name || 'NearPassway worker';
@@ -38,14 +39,15 @@ export function PartnerWorkerCard({
               )}
             </div>
           </div>
-          <Badge
-            variant="outline"
-            className={worker.isAvailable
-              ? 'shrink-0 border-green-200 text-green-700 dark:border-green-900 dark:text-green-300'
-              : 'shrink-0 text-neutral-500'}
-          >
-            {worker.isAvailable ? 'Available' : 'Unavailable'}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          <Badge variant="outline" className={worker.isVerified
+            ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300'
+            : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300'}>
+            {worker.isVerified ? 'Verified' : 'Verification pending'}
           </Badge>
+          <PartnerWorkerStatusBadge status={worker.operationalStatus} />
         </div>
 
         {(worker.city || worker.state) && (

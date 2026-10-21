@@ -1,9 +1,10 @@
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, Clock3, RefreshCw } from 'lucide-react';
 import PartnerLayout from '../../layouts/PartnerLayout';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
+import { Badge } from '../../components/ui/badge';
 import { PartnerStatusBadge } from '../../components/ui/partner/PartnerStatusBadge';
 import { PartnerAssignmentCard, isTrackedPartnerCandidate } from '../../components/ui/partner/PartnerAssignmentCard';
 import type { TrackedPartnerCandidate } from '../../components/ui/partner/PartnerAssignmentCard';
@@ -23,11 +24,40 @@ export default function PartnerAssignments() {
     || (profileQuery.error as Error | null)?.message
     || (requirementsQuery.error as Error | null)?.message;
 
-  const assignments: TrackedPartnerCandidate[] = (requirementsQuery.data ?? []).flatMap((requirement) =>
-    (requirement.candidates ?? [])
-      .filter(isTrackedPartnerCandidate)
+  const requirements = requirementsQuery.data ?? [];
+  const assignments: TrackedPartnerCandidate[] = requirements.flatMap((requirement) => {
+    const replacedCandidateIds = new Set(
+      (requirement.replacementRequests ?? [])
+        .filter((request) => request.status === 'RESOLVED')
+        .map((request) => request.currentAssignmentCandidateId)
+    );
+
+    return (requirement.candidates ?? []).filter(
+      (candidate): candidate is TrackedPartnerCandidate => {
+        if (!isTrackedPartnerCandidate(candidate)) return false;
+
+        return candidate.status === 'REJECTED' ||
+          (candidate.status === 'OFFERED' && ['OPEN', 'MATCHING', 'FILLED'].includes(requirement.status)) ||
+          (candidate.status === 'ASSIGNED' &&
+            ['OPEN', 'MATCHING', 'FILLED'].includes(requirement.status) &&
+            !replacedCandidateIds.has(candidate.id));
+      }
+    )
       .map((candidate) => ({ ...candidate, requirement }))
-  );
+  });
+  const replacementRequests = requirements.flatMap((requirement) =>
+    (requirement.replacementRequests ?? []).map((request) => ({ request, requirement }))
+  ).sort((left, right) => new Date(right.request.createdAt).getTime() - new Date(left.request.createdAt).getTime());
+
+  const replacementStatusLabel = (status: string) => {
+    switch (status) {
+      case 'OPEN': return 'Open';
+      case 'OFFERED': return 'Offer awaiting response';
+      case 'RESOLVED': return 'Resolved';
+      case 'CANCELLED': return 'Cancelled';
+      default: return status;
+    }
+  };
 
   return (
     <PartnerLayout>
@@ -74,6 +104,56 @@ export default function PartnerAssignments() {
           <div className="space-y-3">
             {assignments.map((assignment) => <PartnerAssignmentCard key={assignment.id} assignment={assignment} />)}
           </div>
+        )}
+
+        {!profileQuery.isLoading && !profileQuery.isError && profileQuery.data?.status === 'APPROVED' && !requirementsQuery.isLoading && !requirementsQuery.isError && (
+          <section id="replacement-requests" className="scroll-mt-24 space-y-3" aria-labelledby="replacement-requests-heading">
+            <div>
+              <h2 id="replacement-requests-heading" className="text-lg font-semibold">Replacement requests</h2>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">Current requests and their recorded history for your requirements.</p>
+            </div>
+            {replacementRequests.length === 0 ? (
+              <Card><CardContent className="py-8 text-center text-sm text-neutral-500">No replacement requests yet.</CardContent></Card>
+            ) : (
+              <div className="space-y-3">
+                {replacementRequests.map(({ request, requirement }) => (
+                  <Card key={request.id}>
+                    <CardContent className="flex min-w-0 flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline">{replacementStatusLabel(request.status)}</Badge>
+                          <span className="text-sm font-medium">{request.currentAssignmentCandidate?.workerProfile.user.name ?? 'Original worker'}</span>
+                          {request.replacementCandidate && (
+                            <span className="text-sm text-neutral-600 dark:text-neutral-400">
+                              <ArrowRight className="mx-1 inline h-3.5 w-3.5" />{request.replacementCandidate.workerProfile.user.name}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                          {requirement.subCategory?.name || requirement.category?.name || 'Worker requirement'}
+                          {' · '}{[requirement.city, requirement.state].filter(Boolean).join(', ')}
+                        </p>
+                        <p className="text-sm">{request.reason}</p>
+                        {request.status === 'OFFERED' && (
+                          <p className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 dark:text-blue-300">
+                            <Clock3 className="h-4 w-4" /> Waiting for the replacement worker to respond.
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+                        <span className="inline-flex items-center gap-1 text-xs text-neutral-500">
+                          <RefreshCw className="h-3.5 w-3.5" />{new Date(request.createdAt).toLocaleDateString('en-IN')}
+                        </span>
+                        <Button asChild variant="outline" size="sm">
+                          <Link to={`/partner/requirements/${requirement.id}`}>View requirement <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </section>
         )}
       </div>
     </PartnerLayout>

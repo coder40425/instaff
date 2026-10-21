@@ -4,6 +4,7 @@ import { authorizeRoles } from "../../middleware/roleMiddleware";
 import {
   addAssociatedWorker,
   associatedWorkers,
+  dashboardSummary,
   deleteAssociatedWorker,
   ownProfile,
   updateOwnProfile,
@@ -19,6 +20,7 @@ router.get("/profile", ownProfile);
 router.put("/profile", updateOwnProfile);
 
 // Worker association is an operational capability and requires approval.
+router.get("/dashboard-summary", requireApprovedPartner, dashboardSummary);
 router.get("/workers", requireApprovedPartner, associatedWorkers);
 router.post("/workers", requireApprovedPartner, addAssociatedWorker);
 router.delete(

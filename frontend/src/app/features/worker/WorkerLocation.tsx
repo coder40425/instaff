@@ -11,8 +11,10 @@ import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 
 import { workerService, profileService } from '../../services/api';
+import { getMissingWorkerProfileFields } from './workerProfileCompleteness';
 
 import {
+  AlertCircle,
   MapPin,
   Navigation,
   Plus,
@@ -58,6 +60,9 @@ export default function WorkerLocation() {
   const {
     data: existingProfile,
     isLoading: profileLoading,
+    isError: profileError,
+    error: profileLoadError,
+    refetch: refetchProfile,
   } = useQuery({
     queryKey: ['worker-profile'],
     queryFn: profileService.getWorkerProfile,
@@ -65,12 +70,7 @@ export default function WorkerLocation() {
     throwOnError: false,
   });
 
-  const profileComplete = !!(
-    existingProfile?.aadhaarNumber &&
-    existingProfile?.skillCategory &&
-    existingProfile?.experience != null &&
-    existingProfile?.expectedSalary != null
-  );
+  const missingProfileFields = getMissingWorkerProfileFields(existingProfile);
 
   // ------------------------------------------------------------
   // Multiple worker locations
@@ -80,10 +80,12 @@ export default function WorkerLocation() {
     data: locations = [],
     isLoading: locationsLoading,
     isError: locationsError,
+    isFetching: locationsFetching,
+    refetch: refetchLocations,
   } = useQuery<WorkerLocationData[]>({
     queryKey: ['worker-locations'],
     queryFn: workerService.getLocations,
-    enabled: profileComplete,
+    enabled: !!existingProfile,
   });
 
   // ------------------------------------------------------------
@@ -228,11 +230,8 @@ export default function WorkerLocation() {
   ) => {
     event.preventDefault();
 
-    if (!profileComplete) {
-      toast.error(
-        'Please complete your profile first before adding a location.'
-      );
-
+    if (!existingProfile) {
+      toast.error('Save your worker profile before adding a location.');
       navigate('/worker/profile');
       return;
     }
@@ -274,13 +273,38 @@ export default function WorkerLocation() {
   // Loading / profile state
   // ------------------------------------------------------------
 
-  if (profileLoading) {
+  if (profileLoading && !existingProfile) {
     return (
       <WorkerLayout>
         <div className="max-w-3xl mx-auto">
           <Card>
             <CardContent className="py-12 text-center">
               Loading profile...
+            </CardContent>
+          </Card>
+        </div>
+      </WorkerLayout>
+    );
+  }
+
+  if (profileError && !existingProfile) {
+    const profileNotFound = (profileLoadError as any)?.response?.status === 404;
+
+    return (
+      <WorkerLayout>
+        <div className="mx-auto max-w-3xl">
+          <Card className="border-red-200 dark:border-red-900">
+            <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+              <AlertCircle className="h-7 w-7 text-red-600" />
+              <p className="font-medium">
+                {profileNotFound ? 'Save your worker profile to manage locations.' : 'Unable to load your worker profile.'}
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {!profileNotFound && (
+                  <Button variant="outline" onClick={() => refetchProfile()}>Retry</Button>
+                )}
+                <Button onClick={() => navigate('/worker/profile')}>Go to Profile</Button>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -310,21 +334,17 @@ export default function WorkerLocation() {
         {/* Profile incomplete warning */}
         {/* ---------------------------------------------------- */}
 
-        {!profileComplete && (
+        {missingProfileFields.length > 0 && (
           <Card className="bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800">
-            <CardContent className="p-6 flex items-center justify-between gap-4">
-
+            <CardContent className="flex flex-wrap items-center justify-between gap-4 p-6">
               <div>
                 <p className="text-sm font-semibold text-orange-800 dark:text-orange-200">
-                  ⚠ Complete your profile first
+                  Some required profile details are missing
                 </p>
-
-                <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
-                  You must save your Aadhaar number, skill,
-                  experience and salary before managing locations.
+                <p className="mt-1 text-sm text-orange-700 dark:text-orange-300">
+                  Missing: {missingProfileFields.join(', ')}. You can still manage work locations while completing your profile.
                 </p>
               </div>
-
               <Button
                 size="sm"
                 variant="outline"
@@ -333,12 +353,9 @@ export default function WorkerLocation() {
               >
                 Go to Profile
               </Button>
-
             </CardContent>
           </Card>
         )}
-
-        {/* ---------------------------------------------------- */}
         {/* Existing locations */}
         {/* ---------------------------------------------------- */}
 
@@ -368,17 +385,16 @@ export default function WorkerLocation() {
 
           <CardContent>
 
-            {!profileComplete ? (
-              <div className="text-sm text-neutral-500 text-center py-8">
-                Complete your profile to manage locations.
-              </div>
-            ) : locationsLoading ? (
+            {locationsLoading ? (
               <div className="text-center py-8 text-neutral-500">
                 Loading locations...
               </div>
             ) : locationsError ? (
-              <div className="text-center py-8 text-red-500">
-                Failed to load your locations.
+              <div className="flex flex-col items-center gap-3 py-8 text-center text-red-500">
+                <p>Failed to load your locations.</p>
+                <Button variant="outline" onClick={() => refetchLocations()} disabled={locationsFetching}>
+                  {locationsFetching ? 'Retrying…' : 'Retry'}
+                </Button>
               </div>
             ) : locations.length === 0 ? (
               <div className="text-center py-10">
@@ -473,38 +489,39 @@ export default function WorkerLocation() {
                           </Button>
                         )}
 
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="text-red-600 hover:text-red-700"
-                          disabled={
-                            deleteLocationMutation.isPending
-                          }
-                          onClick={() => {
-                            const confirmed = window.confirm(
-                              `Delete ${location.city}${
-                                location.state
-                                  ? `, ${location.state}`
-                                  : ''
-                              } from your work locations?`
-                            );
-
-                            if (confirmed) {
-                              deleteLocationMutation.mutate(
-                                location.id
+                        {location.isPrimary ? (
+                          <p className="max-w-40 text-right text-xs text-neutral-500">
+                            Set another location as primary before deleting this one.
+                          </p>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 hover:text-red-700"
+                            disabled={deleteLocationMutation.isPending}
+                            onClick={() => {
+                              const confirmed = window.confirm(
+                                `Delete ${location.city}${
+                                  location.state
+                                    ? `, ${location.state}`
+                                    : ''
+                                } from your work locations?`
                               );
-                            }
-                          }}
-                        >
-                          {deleteLocationMutation.isPending ? (
-                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4 mr-1" />
-                          )}
 
-                          Delete
-                        </Button>
+                              if (confirmed) {
+                                deleteLocationMutation.mutate(location.id);
+                              }
+                            }}
+                          >
+                            {deleteLocationMutation.isPending ? (
+                              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4 mr-1" />
+                            )}
+                            Delete
+                          </Button>
+                        )}
 
                       </div>
 
@@ -558,9 +575,7 @@ export default function WorkerLocation() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={
-                      gettingLocation || !profileComplete
-                    }
+                    disabled={gettingLocation}
                     onClick={getCurrentLocation}
                   >
                     {gettingLocation ? (
@@ -590,7 +605,6 @@ export default function WorkerLocation() {
                     id="city"
                     placeholder="e.g. Kolkata"
                     value={form.city}
-                    disabled={!profileComplete}
                     onChange={(event) =>
                       updateField(
                         'city',
@@ -609,7 +623,6 @@ export default function WorkerLocation() {
                     id="state"
                     placeholder="e.g. West Bengal"
                     value={form.state}
-                    disabled={!profileComplete}
                     onChange={(event) =>
                       updateField(
                         'state',
@@ -635,7 +648,6 @@ export default function WorkerLocation() {
                     step="any"
                     placeholder="e.g. 22.5726"
                     value={form.latitude}
-                    disabled={!profileComplete}
                     onChange={(event) =>
                       updateField(
                         'latitude',
@@ -656,7 +668,6 @@ export default function WorkerLocation() {
                     step="any"
                     placeholder="e.g. 88.3639"
                     value={form.longitude}
-                    disabled={!profileComplete}
                     onChange={(event) =>
                       updateField(
                         'longitude',
@@ -676,10 +687,7 @@ export default function WorkerLocation() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={
-                  !profileComplete ||
-                  addLocationMutation.isPending
-                }
+                disabled={addLocationMutation.isPending}
               >
                 {addLocationMutation.isPending ? (
                   <>

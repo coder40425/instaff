@@ -254,6 +254,9 @@ export interface Booking {
   notes?: string;
   status: BookingStatus;
   paymentStatus: PaymentStatus;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
+  cancelledBy?: Role | null;
   createdAt: string;
   updatedAt: string;
   customer?: User;
@@ -358,6 +361,34 @@ export type RequirementCandidateStatus =
   | 'REJECTED'
   | 'EXPIRED';
 
+export type ReplacementRequestStatus =
+  | 'OPEN'
+  | 'OFFERED'
+  | 'RESOLVED'
+  | 'CANCELLED';
+
+export interface RequirementReplacementRequest {
+  id: string;
+  requirementId: string;
+  currentAssignmentCandidateId: string;
+  requestedById: string;
+  reason: string;
+  status: ReplacementRequestStatus;
+  replacementCandidateId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  requestedBy?: { id: string; name: string; role: string };
+  currentAssignmentCandidate?: {
+    id: string;
+    workerProfile: { id: string; user: { name: string } };
+  };
+  replacementCandidate?: {
+    id: string;
+    status: RequirementCandidateStatus;
+    workerProfile: { id: string; user: { name: string } };
+  } | null;
+}
+
 export interface CreateRequirementPayload {
   categoryId: string;
   subCategoryId: string;
@@ -414,8 +445,16 @@ export interface WorkerRequirementOffer {
   assignedAt?: string | null;
   rejectedAt?: string | null;
   createdAt?: string;
+  isReplaced?: boolean;
+  replacementRequest?: {
+    id: string;
+    reason: string;
+    originalWorkerName: string;
+  } | null;
   requirement: {
     id: string;
+    source: RequirementSource;
+    status: RequirementStatus;
     city: string;
     state?: string | null;
     shiftTiming?: ShiftTiming | null;
@@ -428,7 +467,19 @@ export interface WorkerRequirementOffer {
     workGeography?: WorkGeography | null;
     category: { id: string; name: string };
     subCategory: { id: string; name: string };
+    partner: {
+      displayName: string;
+      partnerType: import('./partner').PartnerType;
+      status: import('./partner').PartnerStatus;
+    } | null;
   };
+}
+
+export interface WorkerPartnerAssociation {
+  displayName: string;
+  partnerType: import('./partner').PartnerType;
+  status: import('./partner').PartnerStatus;
+  registeredAt: string;
 }
 
 export interface WorkerRequirementOfferActionResult {
@@ -485,6 +536,7 @@ export interface Requirement {
   category?: Category;
   subCategory?: SubCategory;
   candidates?: RequirementCandidate[];
+  replacementRequests?: RequirementReplacementRequest[];
 }
 
 // ── CRM / Admin Operations ───────────────────────────────────────────────────

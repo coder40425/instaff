@@ -1,6 +1,6 @@
 import { api } from './api';
 import type { PublicWorkerProfile } from '../types';
-import type { PartnerProfile } from '../types/partner';
+import type { PartnerAssociatedWorker, PartnerDashboardSummary, PartnerProfile, PartnerProfileUpdate } from '../types/partner';
 
 export const partnerService = {
   getProfile: async (): Promise<PartnerProfile> => {
@@ -8,12 +8,17 @@ export const partnerService = {
     return response.data.data;
   },
 
-  updateProfile: async (data: { name: string }): Promise<{ name: string }> => {
+  getDashboardSummary: async (): Promise<PartnerDashboardSummary> => {
+    const response = await api.get('/partner/dashboard-summary');
+    return response.data.data;
+  },
+
+  updateProfile: async (data: PartnerProfileUpdate): Promise<PartnerProfile> => {
     const response = await api.put('/partner/profile', data);
     return response.data.data;
   },
 
-  getWorkers: async (): Promise<PublicWorkerProfile[]> => {
+  getWorkers: async (): Promise<PartnerAssociatedWorker[]> => {
     const response = await api.get('/partner/workers');
     return response.data.data ?? [];
   },

@@ -186,13 +186,90 @@ model PartnerProfile {
   status      PartnerStatus @default(PENDING)
   workerLimit Int?
 
+  // Contact and business profile
+  businessName               String?
+  contactPerson              String?
+  email                      String?
+  alternatePhone             String?
+  profilePhotoUrl            String?
+  businessRegistrationNumber String?
+  panNumber                  String?
+  gstin                      String?
+  website                    String?
+  description                String?
+
+  // Business address
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  district     String?
+  state        String?
+  postalCode   String?
+  country      String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  user        User                   @relation(fields: [userId], references: [id])
-  workers     WorkerProfile[]        @relation("WorkerPartner")
-  candidates  RequirementCandidate[] @relation("PartnerRequirementCandidates")
-  commissions PartnerCommission[]
+  user                    User                            @relation(fields: [userId], references: [id])
+  workers                 WorkerProfile[]                 @relation("WorkerPartner")
+  candidates              RequirementCandidate[]          @relation("PartnerRequirementCandidates")
+  commissions             PartnerCommission[]
+  documents               PartnerDocument[]
+  verificationSubmissions PartnerVerificationSubmission[]
+}
+
+model PartnerDocument {
+  id               String  @id @default(cuid())
+  partnerProfileId String
+  submissionId     String?
+
+  documentType PartnerDocumentType
+  storageKey   String
+  fileName     String
+  mimeType     String?
+  fileSize     Int?
+
+  verificationStatus PartnerDocumentStatus @default(PENDING)
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  rejectionReason    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  partnerProfile PartnerProfile @relation(fields: [partnerProfileId], references: [id])
+
+  submission PartnerVerificationSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+
+  @@index([partnerProfileId])
+  @@index([verificationStatus])
+  @@index([submissionId])
+}
+
+model PartnerVerificationSubmission {
+  id               String @id @default(cuid())
+  partnerProfileId String
+
+  // Proposed sensitive-field changes, stored as structured JSON.
+  proposedChanges Json
+
+  status PartnerVerificationSubmissionStatus @default(PENDING)
+
+  submittedAt     DateTime  @default(now())
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  partnerProfile PartnerProfile @relation(fields: [partnerProfileId], references: [id])
+
+  documents PartnerDocument[]
+
+  @@index([partnerProfileId])
+  @@index([status])
+  @@index([submittedAt])
 }
 
 model WorkerWallet {
@@ -253,6 +330,8 @@ model Booking {
   startedAt             DateTime?
   completedAt           DateTime?
   cancelledAt           DateTime?
+  cancellationReason    String?
+  cancelledBy           Role?
   workerPayout          Float?        @default(0)
   platformFee           Float?        @default(0)
   isPaidToWorker        Boolean       @default(false)
@@ -458,6 +537,32 @@ enum PartnerStatus {
   APPROVED
   REJECTED
   SUSPENDED
+}
+
+enum PartnerDocumentType {
+  AADHAAR
+  PAN
+  GST_CERTIFICATE
+  PASSPORT
+  POLICE_VERIFICATION
+  BUSINESS_REGISTRATION
+  CERTIFICATE
+  RESUME
+  AGREEMENT
+  EXPERIENCE_LETTER
+  OTHER
+}
+
+enum PartnerDocumentStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum PartnerVerificationSubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model Requirement {

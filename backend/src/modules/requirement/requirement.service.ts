@@ -1,5 +1,6 @@
 import prisma from "../../config/prisma";
 import { generateRequirementMatches } from "../matching/matching.service";
+import { releaseWorkerAvailabilityIfIdle } from "../matching/assignment.service";
 import { customerWorkerSelect } from "../worker/worker.public";
 import {
   assertRequirementOwner,
@@ -32,6 +33,30 @@ const requirementInclude = {
 
     orderBy: {
       rank: "asc" as const,
+    },
+  },
+
+  replacementRequests: {
+    orderBy: { createdAt: "desc" as const },
+    include: {
+      currentAssignmentCandidate: {
+        select: {
+          id: true,
+          workerProfile: {
+            select: { id: true, user: { select: { name: true } } },
+          },
+        },
+      },
+      replacementCandidate: {
+        select: {
+          id: true,
+          status: true,
+          workerProfile: {
+            select: { id: true, user: { select: { name: true } } },
+          },
+        },
+      },
+      requestedBy: { select: { id: true, name: true, role: true } },
     },
   },
 };
@@ -454,17 +479,14 @@ export const openRequirement = async (
     );
   }
 
-  // First mark requirement as OPEN.
-  await prisma.requirement.update({
-    where: {
-      id: requirementId,
-    },
-
-    data: {
-      status: "OPEN",
-      openedAt: new Date(),
-    },
+  // Only one caller may open a draft requirement.
+  const opened = await prisma.requirement.updateMany({
+    where: { id: requirementId, status: "DRAFT" },
+    data: { status: "OPEN", openedAt: new Date() },
   });
+  if (opened.count !== 1) {
+    throw new Error("Only draft requirements can be opened");
+  }
 
   // Generate initial matching candidates.
   await generateRequirementMatches(
@@ -513,19 +535,45 @@ export const cancelRequirement = async (
     );
   }
 
-  return prisma.requirement.update({
-    where: {
-      id: requirementId,
-    },
+  return prisma.$transaction(async (tx) => {
+    const cancelled = await tx.requirement.updateMany({
+      where: {
+        id: requirementId,
+        status: { in: ["DRAFT", "OPEN", "MATCHING", "EXPIRED"] },
+      },
+      data: { status: "CANCELLED", cancelledAt: new Date() },
+    });
+    if (cancelled.count !== 1) {
+      throw new Error("Requirement can no longer be cancelled");
+    }
 
-    data: {
-      status: "CANCELLED",
-      cancelledAt: new Date(),
-    },
+    await tx.requirementCandidate.updateMany({
+      where: { requirementId, status: "OFFERED" },
+      data: { status: "EXPIRED", expiredAt: new Date() },
+    });
 
-    include: {
-      category: true,
-      subCategory: true,
-    },
+    await tx.replacementRequest.updateMany({
+      where: {
+        requirementId,
+        status: { in: ["OPEN", "OFFERED"] },
+      },
+      data: { status: "CANCELLED" },
+    });
+
+    const assignedWorkers = await tx.requirementCandidate.findMany({
+      where: { requirementId, status: "ASSIGNED" },
+      select: { workerProfile: { select: { userId: true } } },
+    });
+    const workerIds = Array.from(
+      new Set(assignedWorkers.map(({ workerProfile }) => workerProfile.userId))
+    );
+    for (const workerId of workerIds) {
+      await releaseWorkerAvailabilityIfIdle(tx, workerId);
+    }
+
+    return tx.requirement.findUnique({
+      where: { id: requirementId },
+      include: requirementInclude,
+    });
   });
 };

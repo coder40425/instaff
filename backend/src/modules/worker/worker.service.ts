@@ -1,4 +1,5 @@
 import prisma from "../../config/prisma";
+import { releaseWorkerAvailabilityIfIdle } from "../matching/assignment.service";
 
 // ── Helper: build Prisma-safe update data ─────────────────────────────────────
 
@@ -313,7 +314,43 @@ export const updateWorkerProfile = async (userId: string, data: any) => {
 export const updateAvailability = async (userId: string, isAvailable: boolean) => {
   const existing = await prisma.workerProfile.findUnique({ where: { userId } });
   if (!existing) throw new Error("Worker profile not found. Please complete your profile before updating availability.");
-  return prisma.workerProfile.update({ where: { userId }, data: { isAvailable } });
+
+  return prisma.$transaction(async (tx) => {
+    const locked = await tx.workerProfile.updateMany({
+      where: { id: existing.id },
+      data: { updatedAt: new Date() },
+    });
+    if (locked.count !== 1) throw new Error("Worker profile not found");
+
+    if (isAvailable) {
+      const [activeBooking, activeRequirementAssignment] = await Promise.all([
+        tx.booking.findFirst({
+          where: {
+            workerId: userId,
+            status: { in: ["ACCEPTED", "IN_PROGRESS"] },
+          },
+          select: { id: true },
+        }),
+        tx.requirementCandidate.findFirst({
+          where: {
+            workerProfileId: existing.id,
+            status: "ASSIGNED",
+            replacementRequestsCurrent: { none: { status: "RESOLVED" } },
+            requirement: { status: { in: ["OPEN", "MATCHING", "FILLED"] } },
+          },
+          select: { id: true },
+        }),
+      ]);
+      if (activeBooking || activeRequirementAssignment) {
+        throw new Error("Cannot mark available while an active assignment is in progress");
+      }
+    }
+
+    return tx.workerProfile.update({
+      where: { id: existing.id },
+      data: { isAvailable },
+    });
+  });
 };
 
 export const updateLocation = async (userId: string, data: any) => {
@@ -368,10 +405,33 @@ const requirementOfferSelect = {
   requirementId: true,
   status: true,
   offeredAt: true,
+  acceptedAt: true,
+  assignedAt: true,
+  rejectedAt: true,
   createdAt: true,
+  replacementRequestsReplacement: {
+    where: { status: "OFFERED" },
+    select: {
+      id: true,
+      reason: true,
+      currentAssignmentCandidate: {
+        select: {
+          workerProfile: {
+            select: { user: { select: { name: true } } },
+          },
+        },
+      },
+    },
+  },
+  replacementRequestsCurrent: {
+    where: { status: "RESOLVED" },
+    select: { id: true },
+  },
   requirement: {
     select: {
       id: true,
+      source: true,
+      status: true,
       city: true,
       state: true,
       shiftTiming: true,
@@ -394,6 +454,21 @@ const requirementOfferSelect = {
           name: true,
         },
       },
+      createdBy: {
+        select: {
+          partnerProfile: {
+            select: {
+              partnerType: true,
+              status: true,
+              user: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
   },
 } as const;
@@ -408,16 +483,84 @@ export const getWorkerRequirementOffers = async (
 
   if (!profile) throw new Error("Worker profile not found");
 
-  return prisma.requirementCandidate.findMany({
+  const candidates = await prisma.requirementCandidate.findMany({
     where: {
       workerProfileId: profile.id,
-      status: "OFFERED",
+      status: {
+        in: ["OFFERED", "ASSIGNED", "REJECTED", "EXPIRED"],
+      },
     },
     select: requirementOfferSelect,
     orderBy: {
       offeredAt: "desc",
     },
   });
+
+  return candidates.map(({
+    requirement,
+    replacementRequestsReplacement,
+    replacementRequestsCurrent,
+    ...candidate
+  }) => {
+    const { createdBy, ...safeRequirement } = requirement;
+    const partner =
+      requirement.source === "PARTNER_CLIENT"
+        ? createdBy.partnerProfile
+        : null;
+
+    return {
+      ...candidate,
+      isReplaced: replacementRequestsCurrent.length > 0,
+      replacementRequest: replacementRequestsReplacement[0]
+        ? {
+            id: replacementRequestsReplacement[0].id,
+            reason: replacementRequestsReplacement[0].reason,
+            originalWorkerName:
+              replacementRequestsReplacement[0].currentAssignmentCandidate.workerProfile.user.name,
+          }
+        : null,
+      requirement: {
+        ...safeRequirement,
+        partner: partner
+          ? {
+              displayName: partner.user.name,
+              partnerType: partner.partnerType,
+              status: partner.status,
+            }
+          : null,
+      },
+    };
+  });
+};
+
+export const getWorkerPartnerAssociation = async (userId: string) => {
+  const profile = await prisma.workerProfile.findUnique({
+    where: { userId },
+    select: {
+      partner: {
+        select: {
+          createdAt: true,
+          partnerType: true,
+          status: true,
+          user: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!profile) throw new Error("Worker profile not found");
+  if (!profile.partner) return null;
+
+  return {
+    displayName: profile.partner.user.name,
+    partnerType: profile.partner.partnerType,
+    status: profile.partner.status,
+    registeredAt: profile.partner.createdAt,
+  };
 };
 
 export const acceptWorkerRequirementOffer = async (
@@ -446,22 +589,19 @@ export const acceptWorkerRequirementOffer = async (
   if (!offer) throw new Error("Requirement offer not found");
 
   return prisma.$transaction(async (tx) => {
-    // Serialize acceptances for a requirement before counting confirmed workers.
+    // Serialize all active assignment transitions for this requirement.
     const lockedRequirement = await tx.requirement.updateMany({
       where: {
         id: offer.requirementId,
-        status: { in: ["OPEN", "MATCHING"] },
+        status: { in: ["OPEN", "MATCHING", "FILLED"] },
       },
-      data: {
-        updatedAt: new Date(),
-      },
+      data: { updatedAt: new Date() },
     });
-
     if (lockedRequirement.count !== 1) {
       throw new Error("Requirement is no longer available for assignment");
     }
 
-    const [worker, candidate] = await Promise.all([
+    const [worker, candidate, replacementRequest] = await Promise.all([
       tx.workerProfile.findUnique({
         where: { id: profile.id },
         include: {
@@ -480,9 +620,34 @@ export const acceptWorkerRequirementOffer = async (
           requirement: true,
         },
       }),
+      tx.replacementRequest.findFirst({
+        where: {
+          requirementId: offer.requirementId,
+          replacementCandidateId: candidateId,
+          status: "OFFERED",
+          currentAssignmentCandidate: { status: "ASSIGNED" },
+        },
+        include: {
+          currentAssignmentCandidate: {
+            select: {
+              id: true,
+              workerProfile: { select: { userId: true } },
+            },
+          },
+        },
+      }),
     ]);
 
     if (!worker || !candidate) {
+      throw new Error("Requirement offer is no longer available");
+    }
+
+    if (
+      (!replacementRequest &&
+        !["OPEN", "MATCHING"].includes(candidate.requirement.status)) ||
+      (replacementRequest &&
+        !["OPEN", "MATCHING", "FILLED"].includes(candidate.requirement.status))
+    ) {
       throw new Error("Requirement offer is no longer available");
     }
 
@@ -524,6 +689,7 @@ export const acceptWorkerRequirementOffer = async (
           workerProfileId: worker.id,
           status: "ASSIGNED",
           requirementId: { not: candidate.requirementId },
+          replacementRequestsCurrent: { none: { status: "RESOLVED" } },
           requirement: {
             status: { in: ["OPEN", "MATCHING", "FILLED"] },
           },
@@ -536,13 +702,19 @@ export const acceptWorkerRequirementOffer = async (
       throw new Error("Worker already has an active assignment");
     }
 
-    const assignedCount = await tx.requirementCandidate.count({
+    const activeAssignments = await tx.requirementCandidate.findMany({
       where: {
         requirementId: candidate.requirementId,
         status: "ASSIGNED",
+        replacementRequestsCurrent: { none: { status: "RESOLVED" } },
       },
+      select: { id: true },
     });
-
+    const assignedCount = activeAssignments.filter(
+      (assignment) =>
+        !replacementRequest ||
+        assignment.id !== replacementRequest.currentAssignmentCandidate.id
+    ).length;
     if (assignedCount >= candidate.requirement.requiredWorkerCount) {
       throw new Error("Required worker count has already been filled");
     }
@@ -579,18 +751,46 @@ export const acceptWorkerRequirementOffer = async (
       throw new Error("Requirement offer is no longer available");
     }
 
-    const newStatus =
-      assignedCount + 1 >= candidate.requirement.requiredWorkerCount
-        ? "FILLED"
-        : "MATCHING";
+    if (replacementRequest) {
+      const resolved = await tx.replacementRequest.updateMany({
+        where: {
+          id: replacementRequest.id,
+          status: "OFFERED",
+          replacementCandidateId: candidate.id,
+        },
+        data: { status: "RESOLVED" },
+      });
+      if (resolved.count !== 1) {
+        throw new Error("Replacement request is no longer available");
+      }
+      await releaseWorkerAvailabilityIfIdle(
+        tx,
+        replacementRequest.currentAssignmentCandidate.workerProfile.userId
+      );
+    } else {
+      const newStatus =
+        assignedCount + 1 >= candidate.requirement.requiredWorkerCount
+          ? "FILLED"
+          : "MATCHING";
 
-    await tx.requirement.update({
-      where: { id: candidate.requirementId },
-      data: {
-        status: newStatus,
-        ...(newStatus === "FILLED" ? { completedAt: now } : {}),
-      },
-    });
+      await tx.requirement.update({
+        where: { id: candidate.requirementId },
+        // FILLED means every requested position has accepted, not that the
+        // work itself has been completed.
+        data: { status: newStatus },
+      });
+
+      if (newStatus === "FILLED") {
+        await tx.requirementCandidate.updateMany({
+          where: {
+            requirementId: candidate.requirementId,
+            status: "OFFERED",
+            replacementRequestsReplacement: { none: { status: "OFFERED" } },
+          },
+          data: { status: "EXPIRED", expiredAt: now },
+        });
+      }
+    }
 
     return tx.requirementCandidate.findUnique({
       where: { id: candidate.id },
@@ -624,29 +824,77 @@ export const rejectWorkerRequirementOffer = async (
 
   if (!profile) throw new Error("Worker profile not found");
 
-  const rejected = await prisma.requirementCandidate.updateMany({
-    where: {
-      id: candidateId,
-      workerProfileId: profile.id,
-      status: "OFFERED",
-    },
-    data: {
-      status: "REJECTED",
-      rejectedAt: new Date(),
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const candidate = await tx.requirementCandidate.findFirst({
+      where: {
+        id: candidateId,
+        workerProfileId: profile.id,
+        status: "OFFERED",
+      },
+      select: { id: true, requirementId: true },
+    });
+    if (!candidate) {
+      throw new Error("Requirement offer not found or already processed");
+    }
 
-  if (rejected.count !== 1) {
-    throw new Error("Requirement offer not found or already processed");
-  }
+    const lockedRequirement = await tx.requirement.updateMany({
+      where: {
+        id: candidate.requirementId,
+        status: { in: ["OPEN", "MATCHING", "FILLED"] },
+      },
+      data: { updatedAt: new Date() },
+    });
+    if (lockedRequirement.count !== 1) {
+      throw new Error("Requirement offer is no longer available");
+    }
 
-  return prisma.requirementCandidate.findUnique({
-    where: { id: candidateId },
-    select: {
-      id: true,
-      requirementId: true,
-      status: true,
-      rejectedAt: true,
-    },
+    const replacementRequest = await tx.replacementRequest.findFirst({
+      where: {
+        requirementId: candidate.requirementId,
+        replacementCandidateId: candidate.id,
+        status: "OFFERED",
+      },
+      select: { id: true },
+    });
+    const requirement = await tx.requirement.findUnique({
+      where: { id: candidate.requirementId },
+      select: { status: true },
+    });
+    if (!requirement) throw new Error("Requirement not found");
+    if (!replacementRequest && !["OPEN", "MATCHING"].includes(requirement.status)) {
+      throw new Error("Requirement offer is no longer available");
+    }
+
+    const rejected = await tx.requirementCandidate.updateMany({
+      where: { id: candidate.id, status: "OFFERED" },
+      data: { status: "REJECTED", rejectedAt: new Date() },
+    });
+    if (rejected.count !== 1) {
+      throw new Error("Requirement offer not found or already processed");
+    }
+
+    if (replacementRequest) {
+      const reopened = await tx.replacementRequest.updateMany({
+        where: {
+          id: replacementRequest.id,
+          status: "OFFERED",
+          replacementCandidateId: candidate.id,
+        },
+        data: { status: "OPEN", replacementCandidateId: null },
+      });
+      if (reopened.count !== 1) {
+        throw new Error("Replacement request is no longer available");
+      }
+    }
+
+    return tx.requirementCandidate.findUnique({
+      where: { id: candidate.id },
+      select: {
+        id: true,
+        requirementId: true,
+        status: true,
+        rejectedAt: true,
+      },
+    });
   });
 };
