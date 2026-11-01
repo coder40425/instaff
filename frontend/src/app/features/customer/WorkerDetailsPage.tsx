@@ -4,7 +4,10 @@ import CustomerLayout from '../../layouts/CustomerLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
-import { workerService, reviewService } from '../../services/api';
+import {
+  workerService, reviewService, categoryService, getCustomerVisibleSubCategoryIds, isCustomerVisibleSubCategory,
+} from '../../services/api';
+import type { Category } from '../../types';
 import {
   Star,
   MapPin,
@@ -90,6 +93,11 @@ export default function WorkerDetailsPage() {
     retry: false,
   });
 
+  const categoriesQuery = useQuery<Category[]>({
+    queryKey: ['categories', 'visible', 'sequence'],
+    queryFn: () => categoryService.getVisible('sequence'),
+  });
+
   const { data: reviewsData } = useQuery({
     queryKey: ['worker-reviews', id],
     queryFn: () => reviewService.getWorkerReviews(id!),
@@ -100,7 +108,7 @@ export default function WorkerDetailsPage() {
     ? reviewsData
     : reviewsData?.data || [];
 
-  if (isLoading) {
+  if (isLoading || (!!worker && categoriesQuery.isLoading)) {
     return (
       <CustomerLayout>
         <div className="text-center py-12 text-neutral-500">Loading worker details…</div>
@@ -127,10 +135,15 @@ export default function WorkerDetailsPage() {
   }
 
   const workerName = worker.user?.name;
+  const visibleSubCategoryIds = getCustomerVisibleSubCategoryIds(categoriesQuery.data ?? []);
   // skills[] presented A-Z, per requirement
-  const sortedSkills = [...(worker.skills ?? [])].sort((a, b) =>
+  const sortedSkills = categoriesQuery.isSuccess
+    ? (worker.skills ?? []).filter((skill) =>
+        isCustomerVisibleSubCategory(skill.subCategory, visibleSubCategoryIds)
+      ).sort((a, b) =>
     (a.subCategory?.name ?? '').localeCompare(b.subCategory?.name ?? '')
-  );
+      )
+    : [];
   const primaryCategoryName = sortedSkills[0]?.subCategory?.category?.name;
 
   return (

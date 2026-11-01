@@ -1,19 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
-import { Briefcase, ChefHat, Car, HeartPulse, Wrench, Zap, Star, Users, CheckCircle, Shield, Search, X, ArrowRight } from 'lucide-react';
-
-const categories = [
-  { name: 'Maid', icon: Briefcase, category: 'MAID', desc: 'House cleaning & household chores' },
-  { name: 'Cook', icon: ChefHat, category: 'COOK', desc: 'Home cooking & meal preparation' },
-  { name: 'Driver', icon: Car, category: 'DRIVER', desc: 'Personal & family driver services' },
-  { name: 'Nurse', icon: HeartPulse, category: 'NURSE', desc: 'Patient care & medical assistance' },
-  { name: 'Plumber', icon: Wrench, category: 'PLUMBER', desc: 'Plumbing repair & installation' },
-  { name: 'Electrician', icon: Zap, category: 'ELECTRICIAN', desc: 'Electrical work & wiring' },
-];
+import { Briefcase, Star, Users, CheckCircle, Shield, Search, X, ArrowRight } from 'lucide-react';
+import { categoryService } from '../../services/api';
+import type { Category } from '../../types';
 
 const stats = [
   { label: 'Verified Workers', value: '10,000+', icon: Users },
@@ -30,18 +24,37 @@ const testimonials = [
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const categoriesQuery = useQuery<Category[]>({
+    queryKey: ['categories', 'visible', 'sequence'],
+    queryFn: () => categoryService.getVisible('sequence'),
+  });
+  const categories = categoriesQuery.data ?? [];
   const [query, setQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [selectedService, setSelectedService] = useState('');
   const searchRef = useRef<HTMLDivElement>(null);
 
+  const serviceOptions = categories.flatMap((category) => [
+    {
+      key: `category-${category.id}`,
+      name: category.name,
+      categoryName: category.name,
+      isSubCategory: false,
+    },
+    ...(category.subCategories ?? []).map((subCategory) => ({
+      key: `subcategory-${subCategory.id}`,
+      name: subCategory.name,
+      categoryName: category.name,
+      isSubCategory: true,
+    })),
+  ]);
+  const categoryOptions = serviceOptions.filter((option) => !option.isSubCategory);
   const filtered = query.trim()
-    ? categories.filter(c =>
-        c.name.toLowerCase().includes(query.toLowerCase()) ||
-        c.desc.toLowerCase().includes(query.toLowerCase())
+    ? serviceOptions.filter((service) =>
+        `${service.name} ${service.categoryName}`.toLowerCase().includes(query.trim().toLowerCase())
       )
-    : categories;
+    : categoryOptions;
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -190,18 +203,24 @@ export default function LandingPage() {
                   {/* Dropdown */}
                   {showDropdown && (
                     <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-xl overflow-hidden z-40">
-                      {filtered.length > 0 ? filtered.map(cat => (
+                      {categoriesQuery.isLoading ? (
+                        <div className="px-4 py-4 text-sm text-neutral-500 text-center">Loading services…</div>
+                      ) : categoriesQuery.isError ? (
+                        <div className="px-4 py-4 text-sm text-red-600 text-center">Unable to load services. Please try again.</div>
+                      ) : filtered.length > 0 ? filtered.map(service => (
                         <button
-                          key={cat.category}
+                          key={service.key}
                           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors text-left group"
-                          onClick={() => handleServiceClick(cat.name)}
+                          onClick={() => handleServiceClick(service.name)}
                         >
                           <div className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0 group-hover:bg-black dark:group-hover:bg-white transition-colors">
-                            <cat.icon className="w-4 h-4 text-neutral-500 dark:text-neutral-300 group-hover:text-white dark:group-hover:text-black transition-colors" />
+                            <Briefcase className="w-4 h-4 text-neutral-500 dark:text-neutral-300 group-hover:text-white dark:group-hover:text-black transition-colors" />
                           </div>
                           <div>
-                            <p className="text-sm font-semibold text-black dark:text-white">{cat.name}</p>
-                            <p className="text-xs text-neutral-400">{cat.desc}</p>
+                            <p className="text-sm font-semibold text-black dark:text-white">{service.name}</p>
+                            <p className="text-xs text-neutral-400">
+                              {service.isSubCategory ? service.categoryName : 'Category'}
+                            </p>
                           </div>
                         </button>
                       )) : (
@@ -213,9 +232,9 @@ export default function LandingPage() {
 
                 {/* Quick chips */}
                 <div className="flex flex-wrap gap-2">
-                  {categories.slice(0, 4).map(cat => (
+                  {categories.slice(0, 4).map((cat) => (
                     <button
-                      key={cat.category}
+                      key={cat.id}
                       onClick={() => handleServiceClick(cat.name)}
                       className="text-xs px-3 py-1.5 rounded-full border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-black dark:hover:border-white hover:text-black dark:hover:text-white transition-colors font-medium"
                     >
@@ -223,10 +242,10 @@ export default function LandingPage() {
                     </button>
                   ))}
                   <button
-                    onClick={() => navigate('/auth/register')}
+                    onClick={() => setShowDropdown(true)}
                     className="text-xs px-3 py-1.5 rounded-full border border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:border-black dark:hover:border-white hover:text-black dark:hover:text-white transition-colors font-medium"
                   >
-                    +2 more
+                    Browse all
                   </button>
                 </div>
               </div>
@@ -255,7 +274,7 @@ export default function LandingPage() {
           <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-10 gap-4">
             <div>
               <p className="text-xs text-neutral-400 uppercase tracking-[0.2em] font-medium mb-2">What We Offer</p>
-              <h2 className="text-3xl md:text-4xl font-black text-black dark:text-white">Popular Services</h2>
+              <h2 className="text-3xl md:text-4xl font-black text-black dark:text-white">Browse Categories</h2>
             </div>
             <button
               onClick={() => navigate('/auth/register')}
@@ -265,15 +284,22 @@ export default function LandingPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {categoriesQuery.isLoading ? (
+            <p className="py-8 text-center text-sm text-neutral-500">Loading categories…</p>
+          ) : categoriesQuery.isError ? (
+            <p className="py-8 text-center text-sm text-red-600">Unable to load categories. Please try again later.</p>
+          ) : categories.length === 0 ? (
+            <p className="py-8 text-center text-sm text-neutral-500">No categories are available right now.</p>
+          ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {categories.map((category) => (
               <div
-                key={category.category}
+                key={category.id}
                 className="group cursor-pointer bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl p-5 text-center space-y-3 hover:border-neutral-400 dark:hover:border-neutral-500 hover:shadow-md transition-all duration-200"
                 onClick={() => handleServiceClick(category.name)}
               >
                 <div className="w-12 h-12 mx-auto rounded-xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center group-hover:bg-black dark:group-hover:bg-white transition-colors duration-200">
-                  <category.icon className="w-5 h-5 text-neutral-500 dark:text-neutral-300 group-hover:text-white dark:group-hover:text-black transition-colors duration-200" />
+                  <Briefcase className="w-5 h-5 text-neutral-500 dark:text-neutral-300 group-hover:text-white dark:group-hover:text-black transition-colors duration-200" />
                 </div>
                 <p className="font-semibold text-sm text-black dark:text-white">{category.name}</p>
                 <Badge variant="secondary" className="text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-0 font-medium">
@@ -282,6 +308,7 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+          )}
         </div>
       </section>
 

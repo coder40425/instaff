@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useLocation } from 'react-router';
 import { useForm, Controller } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -12,9 +13,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../../components/ui/select';
 import { Badge } from '../../components/ui/badge';
-import { bookingService } from '../../services/api';
+import {
+  bookingService, categoryService, getCustomerVisibleSubCategoryIds, isCustomerVisibleSubCategory,
+} from '../../services/api';
 import type {
   BookingType,
+  Category,
   PublicWorkerProfile,
 } from '../../types';
 import { CalendarClock, MapPin, Calendar, Timer, IndianRupee, FileText, User, ClipboardList, ArrowRight } from 'lucide-react';
@@ -40,14 +44,29 @@ const worker: PublicWorkerProfile | undefined =
 
   // Worker's skills — each has subCategoryId + subCategory.name
   const workerSkills = worker?.skills ?? [];
+  const categoriesQuery = useQuery<Category[]>({
+    queryKey: ['categories', 'visible', 'sequence'],
+    queryFn: () => categoryService.getVisible('sequence'),
+  });
+  const visibleSubCategoryIds = getCustomerVisibleSubCategoryIds(categoriesQuery.data ?? []);
+  const visibleWorkerSkills = workerSkills.filter((skill) =>
+    isCustomerVisibleSubCategory(skill.subCategory, visibleSubCategoryIds)
+  );
 
-  const { register, handleSubmit, control, formState: { errors } } = useForm<BookingForm>({
+  const { register, handleSubmit, control, setValue, watch, formState: { errors } } = useForm<BookingForm>({
     defaultValues: {
       bookingType:   'INSTANT',
-      subCategoryId: workerSkills[0]?.subCategoryId ?? '',
+      subCategoryId: visibleWorkerSkills[0]?.subCategoryId ?? '',
       scheduledDate: new Date().toISOString().slice(0, 16),
     },
   });
+  const selectedSubCategoryId = watch('subCategoryId');
+
+  useEffect(() => {
+    if (categoriesQuery.isSuccess && !selectedSubCategoryId && visibleWorkerSkills[0]) {
+      setValue('subCategoryId', visibleWorkerSkills[0].subCategoryId);
+    }
+  }, [categoriesQuery.isSuccess, selectedSubCategoryId, setValue, visibleWorkerSkills]);
 
   const onSubmit = async (data: BookingForm) => {
     if (!worker) {
@@ -56,6 +75,14 @@ const worker: PublicWorkerProfile | undefined =
     }
     if (!data.subCategoryId) {
       toast.error('Please select a service');
+      return;
+    }
+    if (!categoriesQuery.isSuccess) {
+      toast.error('Service availability could not be checked. Please try again.');
+      return;
+    }
+    if (!visibleWorkerSkills.some((skill) => skill.subCategoryId === data.subCategoryId)) {
+      toast.error('That service is no longer available for booking');
       return;
     }
 
@@ -139,7 +166,7 @@ const worker: PublicWorkerProfile | undefined =
                 <div className="space-y-1.5 min-w-0">
                   <p className="font-semibold text-lg truncate">{worker.user?.name}</p>
                   <div className="flex flex-wrap gap-1">
-                    {[...workerSkills]
+                    {[...visibleWorkerSkills]
                       .sort((a, b) => (a.subCategory?.name ?? '').localeCompare(b.subCategory?.name ?? ''))
                       .map((s) => (
                         <Badge key={s.subCategoryId} variant="secondary" className="text-xs">
@@ -183,8 +210,14 @@ const worker: PublicWorkerProfile | undefined =
                 <Label htmlFor="subCategoryId">
                   Type of Work <span className="text-red-500">*</span>
                 </Label>
-                {workerSkills.length === 0 ? (
-                  <p className="text-sm text-neutral-500">This worker has no skills listed.</p>
+                {categoriesQuery.isLoading ? (
+                  <p className="text-sm text-neutral-500">Loading available services…</p>
+                ) : categoriesQuery.isError ? (
+                  <p className="text-sm text-red-600">Available services could not be loaded. Please refresh and try again.</p>
+                ) : visibleWorkerSkills.length === 0 ? (
+                  <p className="text-sm text-neutral-500">
+                    This worker has no currently visible services available to book.
+                  </p>
                 ) : (
                   <Controller
                     name="subCategoryId"
@@ -196,7 +229,7 @@ const worker: PublicWorkerProfile | undefined =
                           <SelectValue placeholder="Choose the work needed…" />
                         </SelectTrigger>
                         <SelectContent>
-                          {[...workerSkills]
+                          {[...visibleWorkerSkills]
                             .sort((a, b) => (a.subCategory?.name ?? '').localeCompare(b.subCategory?.name ?? ''))
                             .map((skill) => (
                               <SelectItem key={skill.subCategoryId} value={skill.subCategoryId}>
@@ -315,7 +348,7 @@ const worker: PublicWorkerProfile | undefined =
                 <Button type="button" variant="outline" className="flex-1" onClick={() => navigate(-1)}>
                   Cancel
                 </Button>
-                <Button type="submit" className="flex-1" disabled={loading || !worker || workerSkills.length === 0}>
+                <Button type="submit" className="flex-1" disabled={loading || !worker || !categoriesQuery.isSuccess || visibleWorkerSkills.length === 0}>
                   {loading ? 'Submitting…' : 'Confirm Booking'}
                 </Button>
               </div>

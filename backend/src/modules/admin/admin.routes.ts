@@ -1,6 +1,13 @@
 import express from "express";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { authorizeRoles } from "../../middleware/roleMiddleware";
+import {
+  createCategoryHandler,
+  createSubCategoryHandler,
+  getAdminCategories,
+  updateCategoryHandler,
+  updateSubCategoryHandler,
+} from "../categories/category.controller";
 
 import {
   pendingPartners, allPartners, approvePartnerHandler, rejectPartnerHandler,
@@ -19,6 +26,13 @@ import {
 const router = express.Router();
 
 router.use(authMiddleware, authorizeRoles("ADMIN"));
+
+// Categories
+router.get("/categories", getAdminCategories);
+router.post("/categories", createCategoryHandler);
+router.patch("/categories/:id", updateCategoryHandler);
+router.post("/categories/:categoryId/subcategories", createSubCategoryHandler);
+router.patch("/subcategories/:id", updateSubCategoryHandler);
 
 // Partners
 router.get("/partners", allPartners);

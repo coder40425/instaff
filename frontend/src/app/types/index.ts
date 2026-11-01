@@ -54,6 +54,7 @@ export interface SubCategory {
   id: string;
   name: string;
   slug: string;
+  isVisible?: boolean;
   categoryId: string;
   category?: Category;
 }
@@ -63,6 +64,7 @@ export interface Category {
   name: string;
   slug: string;
   sequence?: number;
+  isVisible?: boolean;
   subCategories: SubCategory[];
 }
 
@@ -184,12 +186,14 @@ export interface PublicWorkerSkill {
     id: string;
     name: string;
     slug: string;
+    isVisible?: boolean;
     categoryId: string;
     category?: {
       id: string;
       name: string;
       slug: string;
       sequence?: number;
+      isVisible?: boolean;
     };
   };
 }

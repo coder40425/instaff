@@ -137,6 +137,10 @@ export const createRequirement = async (
     );
   }
 
+  if (actor.role === "CUSTOMER" && (!category.isVisible || !subCategory.isVisible)) {
+    throw new Error("This category or sub-category is not currently available");
+  }
+
   /* Preferred Single validation */
   if (
     data.assignmentMode === "PREFERRED_SINGLE" &&
@@ -269,7 +273,7 @@ export const updateRequirement = async (
     throw new Error("Requirement not found");
   }
 
-  await assertRequirementOwner(userId, requirement);
+  const actor = await assertRequirementOwner(userId, requirement);
 
   // Requirements can only be edited while still being a draft.
   if (requirement.status !== "DRAFT") {
@@ -321,6 +325,16 @@ export const updateRequirement = async (
     throw new Error(
       "Sub-category does not belong to the selected category"
     );
+  }
+
+  const categorySelectionChanged =
+    data.categoryId !== undefined || data.subCategoryId !== undefined;
+  if (
+    actor?.role === "CUSTOMER" &&
+    categorySelectionChanged &&
+    (!category.isVisible || !subCategory.isVisible)
+  ) {
+    throw new Error("This category or sub-category is not currently available");
   }
 
   /* Preferred Single must have a worker */

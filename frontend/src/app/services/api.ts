@@ -10,6 +10,7 @@ import type {
   RequirementCandidate,
   RequirementReplacementRequest,
   Category,
+  SubCategory,
   PublicWorkerProfile,
   WorkerRequirementOffer,
   WorkerRequirementOfferActionResult,
@@ -69,13 +70,79 @@ export const authService = {
 
 export const categoryService = {
   getAll: async (sort: 'sequence' | 'name' = 'sequence'): Promise<Category[]> => {
-    const response = await api.get('/categories', {
-      params: { sort },
+    // Keep internal worker, partner, and CRM workflows on the existing
+    // all-category endpoint. The public /categories route filters hidden items.
+    const response = await api.get('/worker/categories');
+    const categories: Category[] = response.data.data ?? [];
+    return [...categories].sort((left, right) => {
+      if (sort === 'name') return left.name.localeCompare(right.name);
+      return (left.sequence ?? Number.MAX_SAFE_INTEGER) - (right.sequence ?? Number.MAX_SAFE_INTEGER) ||
+        left.name.localeCompare(right.name);
     });
-
+  },
+  getVisible: async (sort: 'sequence' | 'name' = 'sequence'): Promise<Category[]> => {
+    const response = await api.get('/categories', { params: { sort } });
+    const categories: Category[] = response.data.data ?? [];
+    return categories
+      .filter((category) => category.isVisible !== false)
+      .map((category) => ({
+        ...category,
+        subCategories: (category.subCategories ?? []).filter(
+          (subCategory) => subCategory.isVisible !== false
+        ),
+      }));
+  },
+  getAllForAdmin: async (): Promise<Category[]> => {
+    const response = await api.get('/admin/categories');
+    return response.data.data;
+  },
+  createCategory: async (data: { name: string; slug: string }): Promise<Category> => {
+    const response = await api.post('/admin/categories', data);
+    return response.data.data;
+  },
+  updateCategory: async (
+    categoryId: string,
+    data: { name?: string; isVisible?: boolean }
+  ): Promise<Category> => {
+    const response = await api.patch(`/admin/categories/${categoryId}`, data);
+    return response.data.data;
+  },
+  createSubCategory: async (
+    categoryId: string,
+    data: { name: string; slug: string }
+  ): Promise<SubCategory> => {
+    const response = await api.post(`/admin/categories/${categoryId}/subcategories`, data);
+    return response.data.data;
+  },
+  updateSubCategory: async (
+    subCategoryId: string,
+    data: { name?: string; isVisible?: boolean }
+  ): Promise<SubCategory> => {
+    const response = await api.patch(`/admin/subcategories/${subCategoryId}`, data);
     return response.data.data;
   },
 };
+
+export const getCustomerVisibleSubCategoryIds = (categories: Category[]): Set<string> =>
+  new Set(
+    categories
+      .filter((category) => category.isVisible !== false)
+      .flatMap((category) =>
+        (category.subCategories ?? [])
+          .filter((subCategory) => subCategory.isVisible !== false)
+          .map((subCategory) => subCategory.id)
+      )
+  );
+
+export const isCustomerVisibleSubCategory = (subCategory: {
+  id?: string;
+  isVisible?: boolean;
+  category?: { isVisible?: boolean };
+} | null | undefined, visibleSubCategoryIds?: ReadonlySet<string>): boolean =>
+  !!subCategory &&
+  subCategory.isVisible !== false &&
+  subCategory.category?.isVisible !== false &&
+  (!visibleSubCategoryIds || (!!subCategory.id && visibleSubCategoryIds.has(subCategory.id)));
 
 export const workerService = {
   // CUSTOMER DISCOVERY

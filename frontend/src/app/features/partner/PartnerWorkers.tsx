@@ -73,7 +73,7 @@ export default function PartnerWorkers() {
   const profileQuery = useQuery({ queryKey: ['partner-profile'], queryFn: partnerService.getProfile });
   const approved = profileQuery.data?.status === 'APPROVED';
   const categoriesQuery = useQuery({
-    queryKey: ['categories', 'sequence'],
+    queryKey: ['categories', 'all', 'sequence'],
     queryFn: () => categoryService.getAll('sequence'),
     enabled: approved,
   });

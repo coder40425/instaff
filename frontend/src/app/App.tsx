@@ -38,6 +38,7 @@ import BookingManagement from './features/admin/BookingManagement';
 import ComplaintManagement from './features/admin/ComplaintManagement';
 import AdminWallets from './features/admin/AdminWallets';
 import AdminPaymentSettings from './features/admin/AdminPaymentSettings';
+import AdminCategoryManagement from './features/admin/AdminCategoryManagement';
 
 // ── CRM / Operations (new) ──────────────────────────────────────────────────
 import CrmOverview from './features/admin/crm/CrmOverview';
@@ -176,6 +177,7 @@ function AppRoutes() {
       <Route path="/admin/complaints" element={<ProtectedRoute allowedRoles={['ADMIN']}><ComplaintManagement /></ProtectedRoute>} />
       <Route path="/admin/wallets" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminWallets /></ProtectedRoute>} />
       <Route path="/admin/payment-settings" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminPaymentSettings /></ProtectedRoute>} />
+      <Route path="/admin/categories" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminCategoryManagement /></ProtectedRoute>} />
 
       {/* ── CRM / Operations routes (new) ── */}
       <Route path="/admin/crm" element={<ProtectedRoute allowedRoles={['ADMIN']}><CrmOverview /></ProtectedRoute>} />

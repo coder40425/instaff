@@ -50,12 +50,14 @@ export const assertRequirementOwner = async (
   userId: string,
   requirement: { createdById: string },
   isAdmin = false
-) => {
-  if (isAdmin) return;
+) : Promise<RequirementActor | null> => {
+  if (isAdmin) return null;
 
-  await getRequirementActor(userId);
+  const actor = await getRequirementActor(userId);
 
   if (requirement.createdById !== userId) {
     throw new Error("Unauthorized");
   }
+
+  return actor;
 };

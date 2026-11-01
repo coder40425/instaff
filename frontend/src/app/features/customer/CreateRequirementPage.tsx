@@ -97,8 +97,8 @@ export default function CreateRequirementPage() {
     });
 
   const { data: categoriesData } = useQuery<Category[]>({
-    queryKey: ['categories', 'name'],
-    queryFn: () => categoryService.getAll('name'),
+    queryKey: ['categories', isPartner ? 'all' : 'visible', 'name'],
+    queryFn: () => isPartner ? categoryService.getAll('name') : categoryService.getVisible('name'),
   });
   const categories: Category[] = [...(categoriesData ?? [])].sort((a, b) => a.name.localeCompare(b.name));
 

@@ -2,15 +2,59 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-const SEED_DATA = [
+type SubcategorySeed = {
+  name: string;
+  slug: string;
+  isVisible?: boolean;
+  isOptional?: boolean;
+};
+
+type CategorySeed = {
+  name: string;
+  slug: string;
+  sequence?: number;
+  isVisible?: boolean;
+  subs: SubcategorySeed[];
+};
+
+const COOKING_CHOICES: Array<{ name: string; slug: string }> = [
+  { name: "Indian Veg Cook", slug: "indian-veg-cook" },
+  { name: "Indian Non-Veg Cook", slug: "indian-non-veg-cook" },
+  { name: "North Indian Cook", slug: "north-indian-cook" },
+  { name: "South Indian Cook", slug: "south-indian-cook" },
+  { name: "Chinese Cook", slug: "chinese-cook" },
+  { name: "Fast Food Cook", slug: "fast-food-cook" },
+  { name: "Tandoor Cook", slug: "tandoor-cook" },
+  { name: "Continental Cook", slug: "continental-cook" },
+  { name: "Bengali Cook", slug: "bengali-cook" },
+  { name: "Maharashtrian Cook", slug: "maharashtrian-cook" },
+  { name: "Gujarati Cook", slug: "gujarati-cook" },
+  { name: "Rajasthani Cook", slug: "rajasthani-cook" },
+  { name: "Jain Food Cook", slug: "jain-food-cook" },
+  { name: "Healthy / Diet Cook", slug: "healthy-diet-cook" },
+  { name: "Bakery / Dessert Cook", slug: "bakery-dessert-cook" },
+  { name: "Basic Helper / All Rounder", slug: "basic-helper-all-rounder" },
+];
+
+function normalizeSubcategoryName(name: string): string {
+  return name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+const SEED_DATA: CategorySeed[] = [
   {
     name: "Healthcare & Medical Services",
     slug: "healthcare",
     sequence: 1,
+    isVisible: true,
     subs: [
-      { name: "Visit Doctor",             slug: "visit-doctor" },
+      { name: "Visit Doctor",             slug: "visit-doctor", isVisible: false },
       { name: "General Physician",        slug: "general-physician" },
-      { name: "Specialist Doctor",        slug: "specialist-doctor" },
+      { name: "Specialist Doctor",        slug: "specialist-doctor", isVisible: false},
+      { name: "Visit Nurse" ,          slug: "visit-nurse", isVisible: true },
       { name: "Home Nurse",               slug: "home-nurse" },
       { name: "ICU Nurse",                slug: "icu-nurse" },
       { name: "Staff Nurse",              slug: "staff-nurse" },
@@ -42,6 +86,7 @@ const SEED_DATA = [
     name: "Medical Equipment",
     slug: "medical-equipment",
     sequence: 2,
+    isVisible: false,
     subs: [
       { name: "Oxygen Cylinder",      slug: "oxygen-cylinder" },
       { name: "Oxygen Concentrator",  slug: "oxygen-concentrator" },
@@ -63,10 +108,10 @@ const SEED_DATA = [
     slug: "domestic",
     sequence: 3,
     subs: [
-      { name: "Maid",                 slug: "maid" },
-      { name: "Part Time Maid",       slug: "part-time-maid" },
-      { name: "Full Time Maid",       slug: "full-time-maid" },
-      { name: "Live In Maid [24 hours]", slug: "live-in-maid" },
+      { name: "Maid",                 slug: "maid", isOptional: false },
+      { name: "Part Time Maid",       slug: "part-time-maid", isOptional: false },
+      { name: "Full Time Maid",       slug: "full-time-maid", isOptional: false },
+      { name: "Live In Maid (24 Hours)", slug: "live-in-maid", isOptional: false },
       { name: "Cleaning Maid",        slug: "cleaning-maid" },
       { name: "Deep Cleaning Staff",  slug: "deep-cleaning-staff" },
       { name: "Housekeeper",          slug: "housekeeper" },
@@ -74,15 +119,20 @@ const SEED_DATA = [
       { name: "Cook",                 slug: "cook" },
       { name: "Chef",                 slug: "chef" },
       { name: "Home Chef",            slug: "home-chef" },
-      { name: "Kitchen Helper",       slug: "kitchen-helper" },
-      { name: "Butler",               slug: "butler" },
+      { name: "Kitchen Helper",       slug: "kitchen-helper", isOptional: false },
+      { name: "Butler",               slug: "butler", isOptional: false },
       { name: "Laundry Staff",        slug: "laundry-staff" },
       { name: "Ironing Staff",        slug: "ironing-staff" },
       { name: "Dishwasher",           slug: "dishwasher" },
-      { name: "Home Manager",         slug: "home-manager" },
+      { name: "Home Manager",         slug: "home-manager", isOptional: false },
       { name: "Caretaker",            slug: "caretaker" },
-      { name: "Couple Caretaker (Husband-Wife)", slug: "couple-caretaker" },
-      { name: "Pantry Helper",        slug: "pantry-helper-domestic" },
+      { name: "Couple Caretaker (Husband-Wife)", slug: "couple-caretaker", isOptional: false },
+      { name: "Pantry Helper",        slug: "pantry-helper-domestic", isOptional: false },
+      ...COOKING_CHOICES.map((choice) => ({
+        ...choice,
+        slug: `domestic-${choice.slug}`,
+        isOptional: true,
+      })),
     ],
   },
   {
@@ -264,15 +314,20 @@ const SEED_DATA = [
       { name: "Waiter",              slug: "waiter" },
       { name: "Steward",             slug: "steward" },
       { name: "Captain",             slug: "captain" },
-      { name: "Restaurant Manager",  slug: "restaurant-manager" },
+      { name: "Restaurant Manager",  slug: "restaurant-manager", isOptional: false },
       { name: "Barista",             slug: "barista" },
       { name: "Bartender",           slug: "bartender" },
-      { name: "Pantry Staff",        slug: "pantry-staff" },
-      { name: "Kitchen Staff",       slug: "kitchen-staff" },
+      { name: "Pantry Staff",        slug: "pantry-staff", isOptional: false },
+      { name: "Kitchen Staff",       slug: "kitchen-staff", isOptional: false },
       { name: "Restaurant Cashier",  slug: "restaurant-cashier" },
       { name: "Hotel Receptionist",  slug: "hotel-receptionist" },
       { name: "Housekeeping Staff",  slug: "housekeeping-staff-hospitality" },
       { name: "Room Service Staff",  slug: "room-service-staff" },
+      ...COOKING_CHOICES.map((choice) => ({
+        ...choice,
+        slug: `hospitality-${choice.slug}`,
+        isOptional: true,
+      })),
     ],
   },
   {
@@ -591,25 +646,81 @@ async function main() {
   let totalSubs = 0;
 
   for (const cat of SEED_DATA) {
-  const category = await prisma.category.upsert({
-  where: { slug: cat.slug },
-  update: {
-    name: cat.name,
-    sequence: cat.sequence,
-  },
-  create: {
-    name: cat.name,
-    slug: cat.slug,
-    sequence: cat.sequence,
-  },
-});
+    const category = await prisma.category.upsert({
+      where: { slug: cat.slug },
+      update: {
+        name: cat.name,
+        ...(cat.sequence === undefined ? {} : { sequence: cat.sequence }),
+        ...(cat.isVisible === undefined ? {} : { isVisible: cat.isVisible }),
+      },
+      create: {
+        name: cat.name,
+        slug: cat.slug,
+        ...(cat.sequence === undefined ? {} : { sequence: cat.sequence }),
+        isVisible: cat.isVisible ?? true,
+      },
+    });
+
+    const existingSubcategories = await prisma.subCategory.findMany({
+      where: { categoryId: category.id },
+    });
 
     for (const sub of cat.subs) {
-      await prisma.subCategory.upsert({
-        where:  { slug: sub.slug },
-        update: { name: sub.name, categoryId: category.id },
-        create: { name: sub.name, slug: sub.slug, categoryId: category.id },
+      const normalizedName = normalizeSubcategoryName(sub.name);
+      const matchingNames = existingSubcategories.filter(
+        (existing) => normalizeSubcategoryName(existing.name) === normalizedName,
+      );
+
+      if (matchingNames.length > 1) {
+        throw new Error(
+          `Multiple subcategories named "${sub.name}" already exist under "${cat.name}"; refusing to choose one.`,
+        );
+      }
+
+      let existing = matchingNames[0];
+
+      if (!existing) {
+        const slugMatch = await prisma.subCategory.findUnique({
+          where: { slug: sub.slug },
+        });
+
+        if (slugMatch) {
+          if (slugMatch.categoryId !== category.id) {
+            throw new Error(
+              `Subcategory slug "${sub.slug}" is already used under another category; refusing to move it.`,
+            );
+          }
+
+          throw new Error(
+            `Subcategory slug "${sub.slug}" already belongs to "${slugMatch.name}" under "${cat.name}"; refusing to rename it.`,
+          );
+        }
+      }
+
+      const savedSubcategory = await prisma.subCategory.upsert({
+        where: { slug: existing?.slug ?? sub.slug },
+        update: {
+          name: sub.name,
+          ...(sub.isVisible === undefined ? {} : { isVisible: sub.isVisible }),
+          ...(sub.isOptional === undefined ? {} : { isOptional: sub.isOptional }),
+        },
+        create: {
+          name: sub.name,
+          slug: existing?.slug ?? sub.slug,
+          categoryId: category.id,
+          isVisible: sub.isVisible ?? true,
+          isOptional: sub.isOptional ?? false,
+        },
       });
+
+      if (existing) {
+        const existingIndex = existingSubcategories.findIndex(
+          (candidate) => candidate.id === existing?.id,
+        );
+        existingSubcategories[existingIndex] = savedSubcategory;
+      } else {
+        existingSubcategories.push(savedSubcategory);
+      }
     }
 
     totalSubs += cat.subs.length;

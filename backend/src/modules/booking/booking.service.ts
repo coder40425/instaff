@@ -63,8 +63,14 @@ export const createBooking = async (customerId: string, data: any) => {
   const hasSkill = worker.skills.some((s) => s.subCategoryId === data.subCategoryId);
   if (!hasSkill) throw new Error("Worker does not offer this service");
 
-  const subCategory = await prisma.subCategory.findUnique({ where: { id: data.subCategoryId } });
+  const subCategory = await prisma.subCategory.findUnique({
+    where: { id: data.subCategoryId },
+    include: { category: true },
+  });
   if (!subCategory) throw new Error("Service category not found");
+  if (!subCategory.isVisible || !subCategory.category.isVisible) {
+    throw new Error("This service is not currently available");
+  }
 
   return prisma.booking.create({
     data: {

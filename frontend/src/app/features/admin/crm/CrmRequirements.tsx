@@ -109,7 +109,7 @@ export default function CrmRequirements() {
   }, [searchInput]);
 
   const { data: categories } = useQuery({
-    queryKey: ['categories', 'sequence'],
+    queryKey: ['categories', 'all', 'sequence'],
     queryFn: () => categoryService.getAll('sequence'),
     staleTime: 5 * 60 * 1000,
   });

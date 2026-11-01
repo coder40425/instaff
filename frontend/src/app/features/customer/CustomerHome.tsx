@@ -6,7 +6,9 @@ import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
-import { workerService, categoryService } from '../../services/api';
+import {
+  workerService, categoryService, getCustomerVisibleSubCategoryIds, isCustomerVisibleSubCategory,
+} from '../../services/api';
 import { Checkbox } from '../../components/ui/checkbox';
 import { Star, MapPin, Search, CheckCircle2 } from 'lucide-react';
 import type { Category, SubCategory, Worker, WorkerDirectoryFilters, WorkerDirectorySort } from '../../types';
@@ -38,11 +40,12 @@ export default function CustomerHome() {
   // cosmetic filter for users who want to double-confirm; it is NOT a security
   // control and toggling it off never exposes unverified workers.
 
-  const { data: categoriesData } = useQuery<Category[]>({
-    queryKey: ['categories', 'sequence'],
-    queryFn: () => categoryService.getAll('sequence'),
+  const categoriesQuery = useQuery<Category[]>({
+    queryKey: ['categories', 'visible', 'sequence'],
+    queryFn: () => categoryService.getVisible('sequence'),
   });
-  const categories: Category[] = categoriesData ?? [];
+  const categories: Category[] = categoriesQuery.data ?? [];
+  const visibleSubCategoryIds = getCustomerVisibleSubCategoryIds(categories);
   const sortedCategoriesForFilter = [...categories].sort((a, b) => a.name.localeCompare(b.name));
 
   const selectedCategory = categories.find((c) => c.id === categoryId);
@@ -67,8 +70,8 @@ export default function CustomerHome() {
 
   const {
     data: workers = [],
-    isLoading,
-    isError,
+    isLoading: isWorkersLoading,
+    isError: isWorkersError,
   } = useQuery({
     queryKey: ['workers', filters],
     queryFn: () => workerService.getAll(filters),
@@ -78,7 +81,17 @@ export default function CustomerHome() {
   // The "Verified Only" checkbox here is a no-op display filter kept for UX
   // continuity — since the list is already 100% verified, this never removes anyone
   // unless a defensively-filtered anomaly somehow appeared, which it won't.
- const visibleWorkers: Worker[] = workers;
+ const visibleWorkers: Worker[] = categoriesQuery.isSuccess
+  ? workers.reduce<Worker[]>((visible, worker) => {
+      const skills = (worker.skills ?? []).filter((skill) =>
+        isCustomerVisibleSubCategory(skill.subCategory, visibleSubCategoryIds)
+      );
+      if (skills.length > 0) visible.push({ ...worker, skills });
+      return visible;
+    }, [])
+  : [];
+ const isLoading = isWorkersLoading || categoriesQuery.isLoading;
+ const isError = isWorkersError || categoriesQuery.isError;
   const resultCount = visibleWorkers.length;
 
  const hasActiveFilters =

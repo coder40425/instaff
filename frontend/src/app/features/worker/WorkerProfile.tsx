@@ -300,7 +300,7 @@ export default function WorkerProfile() {
 
   const { data: categoriesData } =
     useQuery<Category[]>({
-      queryKey: ["categories", "name"],
+      queryKey: ["categories", "all", "name"],
       queryFn: () => categoryService.getAll("name"),
     });
 
