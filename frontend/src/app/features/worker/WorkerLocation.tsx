@@ -37,6 +37,7 @@ interface WorkerLocationData {
   latitude?: number | null;
   longitude?: number | null;
   isPrimary?: boolean;
+  isLegacy?: boolean;
 }
 
 const EMPTY_FORM: LocationForm = {
@@ -87,6 +88,19 @@ export default function WorkerLocation() {
     queryFn: workerService.getLocations,
     enabled: !!existingProfile,
   });
+  const displayedLocations: WorkerLocationData[] = locations.length > 0
+    ? locations
+    : existingProfile?.city
+      ? [{
+          id: 'legacy-profile-location',
+          city: existingProfile.city,
+          state: existingProfile.state,
+          latitude: existingProfile.latitude,
+          longitude: existingProfile.longitude,
+          isPrimary: true,
+          isLegacy: true,
+        }]
+      : [];
 
   // ------------------------------------------------------------
   // Add location
@@ -103,7 +117,6 @@ export default function WorkerLocation() {
         longitude: form.longitude
           ? Number(form.longitude)
           : undefined,
-        isPrimary: locations.length === 0,
       }),
 
     onSuccess: () => {
@@ -372,10 +385,10 @@ export default function WorkerLocation() {
                 </p>
               </div>
 
-              {locations.length > 0 && (
+              {displayedLocations.length > 0 && (
                 <Badge variant="secondary">
-                  {locations.length}{' '}
-                  {locations.length === 1
+                  {displayedLocations.length}{' '}
+                  {displayedLocations.length === 1
                     ? 'location'
                     : 'locations'}
                 </Badge>
@@ -396,7 +409,7 @@ export default function WorkerLocation() {
                   {locationsFetching ? 'Retrying…' : 'Retry'}
                 </Button>
               </div>
-            ) : locations.length === 0 ? (
+            ) : displayedLocations.length === 0 ? (
               <div className="text-center py-10">
 
                 <MapPin className="w-10 h-10 mx-auto text-neutral-400 mb-3" />
@@ -413,7 +426,7 @@ export default function WorkerLocation() {
             ) : (
               <div className="space-y-3">
 
-                {locations.map((location) => (
+                {displayedLocations.map((location) => (
                   <div
                     key={location.id}
                     className="border border-neutral-200 dark:border-neutral-800 rounded-lg p-4"

@@ -141,10 +141,11 @@ interface WorkerProfileForm {
 interface WorkerLocation {
   id: string;
   city: string;
-  state: string;
-  latitude: number;
-  longitude: number;
+  state: string | null;
+  latitude: number | null;
+  longitude: number | null;
   isPrimary?: boolean;
+  isLegacy?: boolean;
 }
 
 interface LocationForm {
@@ -338,6 +339,19 @@ export default function WorkerProfile() {
   });
 
   const locations = locationsData ?? [];
+  const displayedLocations: WorkerLocation[] = locations.length > 0
+    ? locations
+    : existingProfile?.city
+      ? [{
+          id: "legacy-profile-location",
+          city: existingProfile.city,
+          state: existingProfile.state ?? null,
+          latitude: existingProfile.latitude ?? null,
+          longitude: existingProfile.longitude ?? null,
+          isPrimary: true,
+          isLegacy: true,
+        }]
+      : [];
 
   /* ------------------------------------------------------------------------ */
   /* Populate profile                                                         */
@@ -877,7 +891,7 @@ export default function WorkerProfile() {
   /* ------------------------------------------------------------------------ */
 
   const hasPrimaryLocation =
-    locations.some(
+    displayedLocations.some(
       (location) => location.isPrimary
     );
 
@@ -1859,8 +1873,9 @@ export default function WorkerProfile() {
                   </p>
 
                   <p className="text-xs text-neutral-400 mt-1">
-                    Your primary location is used
-                    as your main location for matching.
+                    Matching can consider any saved location. Your primary
+                    location is shown first and kept in sync with your legacy
+                    profile location.
                   </p>
                 </div>
 
@@ -1884,7 +1899,7 @@ export default function WorkerProfile() {
                 <div className="py-6 text-center text-sm text-neutral-500">
                   Loading locations…
                 </div>
-              ) : locations.length === 0 ? (
+              ) : displayedLocations.length === 0 ? (
                 <div className="border border-dashed rounded-lg p-6 text-center">
                   <MapPin className="w-8 h-8 mx-auto mb-2 text-neutral-500" />
 
@@ -1900,7 +1915,7 @@ export default function WorkerProfile() {
               ) : (
                 <div className="space-y-3">
 
-                  {locations.map(
+                  {displayedLocations.map(
                     (location) => (
                       <div
                         key={location.id}
@@ -1933,19 +1948,17 @@ export default function WorkerProfile() {
 
                               </div>
 
-                              <p className="text-sm text-neutral-500">
-                                {location.state}
-                              </p>
+                              {location.state && (
+                                <p className="text-sm text-neutral-500">
+                                  {location.state}
+                                </p>
+                              )}
 
-                              <p className="text-xs text-neutral-400 mt-1">
-                                {Number(
-                                  location.latitude
-                                ).toFixed(5)}
-                                ,{" "}
-                                {Number(
-                                  location.longitude
-                                ).toFixed(5)}
-                              </p>
+                              {location.latitude != null && location.longitude != null && (
+                                <p className="text-xs text-neutral-400 mt-1">
+                                  {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
+                                </p>
+                              )}
                             </div>
 
                           </div>
@@ -1970,22 +1983,18 @@ export default function WorkerProfile() {
                               </Button>
                             )}
 
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              disabled={
-                                locationLoading
-                              }
-                              onClick={() =>
-                                deleteLocation(
-                                  location.id
-                                )
-                              }
-                              className="text-red-500 hover:text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {!location.isLegacy && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                disabled={locationLoading}
+                                onClick={() => deleteLocation(location.id)}
+                                className="text-red-500 hover:text-red-600"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
 
                           </div>
 
@@ -2173,7 +2182,7 @@ export default function WorkerProfile() {
               )}
 
               {!hasPrimaryLocation &&
-                locations.length > 0 && (
+                displayedLocations.length > 0 && (
                   <p className="text-xs text-orange-500">
                     You have locations added but
                     no primary location selected.

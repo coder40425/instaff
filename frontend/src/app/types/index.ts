@@ -444,12 +444,15 @@ export interface WorkerRequirementOffer {
   id: string;
   requirementId: string;
   status: RequirementCandidateStatus;
+  matchScore?: number | null;
+  matchReason?: string | null;
   offeredAt?: string | null;
   acceptedAt?: string | null;
   assignedAt?: string | null;
   rejectedAt?: string | null;
   createdAt?: string;
   isReplaced?: boolean;
+  companyName?: string | null;
   replacementRequest?: {
     id: string;
     reason: string;
@@ -461,6 +464,7 @@ export interface WorkerRequirementOffer {
     status: RequirementStatus;
     city: string;
     state?: string | null;
+    address?: string | null;
     shiftTiming?: ShiftTiming | null;
     salaryBudget?: number | null;
     minExperience: number;

@@ -17,6 +17,7 @@ import type {
   RequirementStatus,
   ShiftTiming,
 } from '../../types';
+import { formatWorkerLocations } from '../../utils/workerLocations';
 
 import {
   MapPin,
@@ -984,10 +985,10 @@ function CandidateCard({
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
-            {worker?.city && (
+            {worker && formatWorkerLocations(worker) && (
               <span className="flex items-center gap-1">
                 <MapPin className="h-3 w-3" />
-                {worker.city}
+                {formatWorkerLocations(worker)}
               </span>
             )}
             {worker?.experience != null && (

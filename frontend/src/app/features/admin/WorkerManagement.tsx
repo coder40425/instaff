@@ -10,6 +10,7 @@ import { Textarea } from '../../components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { workerService, adminService } from '../../services/api';
 import { useState } from 'react';
+import { formatWorkerLocations } from '../../utils/workerLocations';
 import { Search, UserX, UserCheck, Star, User, AlertTriangle } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -268,7 +269,7 @@ export default function WorkerManagement() {
                       </div>
                       <div>
                         <p className="text-neutral-500 dark:text-neutral-400">Location</p>
-                        <p className="font-medium">{worker.city || 'N/A'}</p>
+                        <p className="font-medium">{formatWorkerLocations(worker) || 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-neutral-500 dark:text-neutral-400">Experience</p>

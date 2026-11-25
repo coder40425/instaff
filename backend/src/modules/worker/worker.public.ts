@@ -66,6 +66,7 @@ export const customerWorkerSelect = {
   },
 
   locations: {
+    orderBy: { isPrimary: "desc" },
     select: {
       id: true,
       workerProfileId: true,

@@ -4,6 +4,7 @@ import { Button } from '../button';
 import { Card, CardContent } from '../card';
 import type { PartnerAssociatedWorker } from '../../../types/partner';
 import { PartnerWorkerStatusBadge } from './PartnerStatusBadge';
+import { formatWorkerLocations } from '../../../utils/workerLocations';
 
 export function PartnerWorkerCard({
   worker,
@@ -50,10 +51,10 @@ export function PartnerWorkerCard({
           <PartnerWorkerStatusBadge status={worker.operationalStatus} />
         </div>
 
-        {(worker.city || worker.state) && (
+        {formatWorkerLocations(worker) && (
           <p className="flex items-center gap-1.5 break-words text-sm text-neutral-600 dark:text-neutral-400">
             <MapPin className="h-4 w-4 flex-shrink-0" />
-            {[worker.city, worker.state].filter(Boolean).join(', ')}
+            {formatWorkerLocations(worker)}
           </p>
         )}
 

@@ -12,6 +12,7 @@ import {
 import { Checkbox } from '../../components/ui/checkbox';
 import { Star, MapPin, Search, CheckCircle2 } from 'lucide-react';
 import type { Category, SubCategory, Worker, WorkerDirectoryFilters, WorkerDirectorySort } from '../../types';
+import { formatWorkerLocations } from '../../utils/workerLocations';
 
 export default function CustomerHome() {
   const navigate = useNavigate();
@@ -336,9 +337,7 @@ export default function CustomerHome() {
   <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
     <MapPin className="w-4 h-4" />
     <span>
-      {worker.city
-        ? `${worker.city}${worker.state ? `, ${worker.state}` : ''}`
-        : 'Location not set'}
+      {formatWorkerLocations(worker) || 'Location not set'}
     </span>
   </div>
 

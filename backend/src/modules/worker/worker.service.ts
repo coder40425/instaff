@@ -1,9 +1,11 @@
 import prisma from "../../config/prisma";
+import { Prisma } from "@prisma/client";
 import { releaseWorkerAvailabilityIfIdle } from "../matching/assignment.service";
+import { workerMatchesRequirementLocation } from "../../utils/workerLocation";
 
 // ── Helper: build Prisma-safe update data ─────────────────────────────────────
 
-function mapProfileData(data: any) {
+function mapProfileData(data: any, includeLegacyLocation = true) {
   return {
     ...(data.profilePhotoUrl        !== undefined && { profilePhotoUrl:        data.profilePhotoUrl }),
     ...(data.gender                 !== undefined && { gender:                 data.gender }),
@@ -25,10 +27,10 @@ function mapProfileData(data: any) {
     ...(data.motherName             !== undefined && { motherName:             data.motherName }),
     ...(data.emergencyContact       !== undefined && { emergencyContact:       data.emergencyContact }),
     ...(data.emergencyContactNumber !== undefined && { emergencyContactNumber: data.emergencyContactNumber }),
-    ...(data.city                   !== undefined && { city:                   data.city }),
-    ...(data.state                  !== undefined && { state:                  data.state }),
-    ...(data.latitude               !== undefined && { latitude:               data.latitude }),
-    ...(data.longitude              !== undefined && { longitude:              data.longitude }),
+    ...(includeLegacyLocation && data.city !== undefined && { city: data.city.trim() }),
+    ...(includeLegacyLocation && data.state !== undefined && { state: data.state?.trim() || null }),
+    ...(includeLegacyLocation && data.latitude !== undefined && { latitude: data.latitude }),
+    ...(includeLegacyLocation && data.longitude !== undefined && { longitude: data.longitude }),
     ...(data.aadhaarNumber          !== undefined && { aadhaarNumber:          data.aadhaarNumber }),
         ...(data.employmentTypes        !== undefined && { employmentTypes:        data.employmentTypes }),
     ...(data.workMode               !== undefined && { workMode:               data.workMode }),
@@ -36,6 +38,115 @@ function mapProfileData(data: any) {
     ...(data.preferredCountries     !== undefined && { preferredCountries:     data.preferredCountries }),
   };
 }
+
+const normalizeLocationPart = (value: string | null | undefined) =>
+  value?.trim().toLocaleLowerCase() ?? "";
+
+const syncLegacyLocationInput = async (
+  tx: Prisma.TransactionClient,
+  profile: {
+    id: string;
+    city: string | null;
+    state: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  },
+  data: {
+    city?: string;
+    state?: string;
+    latitude?: number;
+    longitude?: number;
+  }
+) => {
+  if (data.city !== undefined && !data.city.trim()) {
+    throw new Error("City is required");
+  }
+  const locationWasUpdated =
+    data.city !== undefined ||
+    data.state !== undefined ||
+    data.latitude !== undefined ||
+    data.longitude !== undefined;
+  if (!locationWasUpdated) return;
+
+  let locations = await tx.workerLocation.findMany({
+    where: { workerProfileId: profile.id },
+  });
+  if (locations.length === 0 && profile.city?.trim()) {
+    const legacyLocation = await tx.workerLocation.create({
+      data: {
+        workerProfileId: profile.id,
+        city: profile.city.trim(),
+        state: profile.state,
+        latitude: profile.latitude,
+        longitude: profile.longitude,
+        isPrimary: true,
+      },
+    });
+    locations = [legacyLocation];
+  }
+  const primary = locations.find((location) => location.isPrimary) ?? null;
+  const city = data.city !== undefined
+    ? data.city.trim()
+    : primary?.city ?? profile.city ?? "";
+  const state = data.state !== undefined
+    ? data.state.trim() || null
+    : primary?.state ?? profile.state;
+
+  if (!city) {
+    // Keep legacy coordinate-only updates working when no city is known.
+    await tx.workerProfile.update({
+      where: { id: profile.id },
+      data: {
+        ...(data.state !== undefined && { state }),
+        ...(data.latitude !== undefined && { latitude: data.latitude }),
+        ...(data.longitude !== undefined && { longitude: data.longitude }),
+      },
+    });
+    return;
+  }
+
+  const matchingLocation = locations.find((location) =>
+    normalizeLocationPart(location.city) === normalizeLocationPart(city) &&
+    normalizeLocationPart(location.state) === normalizeLocationPart(state)
+  );
+  const sameAsLegacy =
+    normalizeLocationPart(profile.city) === normalizeLocationPart(city) &&
+    normalizeLocationPart(profile.state) === normalizeLocationPart(state);
+  const locationData = {
+    city,
+    state,
+    latitude: data.latitude !== undefined
+      ? data.latitude
+      : matchingLocation?.latitude ?? (sameAsLegacy ? profile.latitude : null),
+    longitude: data.longitude !== undefined
+      ? data.longitude
+      : matchingLocation?.longitude ?? (sameAsLegacy ? profile.longitude : null),
+  };
+
+  await tx.workerLocation.updateMany({
+    where: { workerProfileId: profile.id, isPrimary: true },
+    data: { isPrimary: false },
+  });
+
+  const primaryLocation = matchingLocation
+    ? await tx.workerLocation.update({
+        where: { id: matchingLocation.id },
+        data: { ...locationData, isPrimary: true },
+      })
+    : await tx.workerLocation.create({
+        data: { ...locationData, workerProfileId: profile.id, isPrimary: true },
+      });
+
+  await tx.workerProfile.update({
+    where: { id: profile.id },
+    data: {
+      city: primaryLocation.city,
+      state: primaryLocation.state,
+      latitude: primaryLocation.latitude,
+      longitude: primaryLocation.longitude,
+    },
+  });
+};
 
 const workerInclude = {
   user: {
@@ -69,6 +180,7 @@ const workerInclude = {
 export const createWorkerProfile = async (userId: string, data: any) => {
   const existingProfile = await prisma.workerProfile.findUnique({ where: { userId } });
   if (existingProfile) throw new Error("Worker profile already exists");
+  if (data.city !== undefined && !data.city.trim()) throw new Error("City is required");
   if (!data.aadhaarNumber) throw new Error("Aadhaar number is required");
   if (!data.skillIds || data.skillIds.length === 0) throw new Error("At least one skill is required");
 
@@ -79,6 +191,17 @@ export const createWorkerProfile = async (userId: string, data: any) => {
       experience:     data.experience    ?? 0,
       expectedSalary: data.expectedSalary ?? 0,
       ...mapProfileData(data),
+      ...(data.city?.trim() && {
+        locations: {
+          create: {
+            city: data.city.trim(),
+            state: data.state?.trim() || null,
+            latitude: data.latitude ?? null,
+            longitude: data.longitude ?? null,
+            isPrimary: true,
+          },
+        },
+      }),
     },
   });
 
@@ -140,65 +263,83 @@ export const addWorkerLocation = async (
     isPrimary?: boolean;
   }
 ) => {
-  const profile = await prisma.workerProfile.findUnique({
-    where: {
-      userId,
-    },
-    select: {
-      id: true,
-    },
-  });
+  const city = data.city.trim();
+  const state = data.state?.trim() || null;
+  if (!city) throw new Error("City is required");
 
-  if (!profile) {
-    throw new Error("Worker profile not found");
-  }
-
-  const existingLocations =
-    await prisma.workerLocation.findMany({
-      where: {
-        workerProfileId: profile.id,
+  return prisma.$transaction(async (tx) => {
+    const profile = await tx.workerProfile.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        city: true,
+        state: true,
+        latitude: true,
+        longitude: true,
       },
     });
+    if (!profile) throw new Error("Worker profile not found");
 
-  const alreadyExists = existingLocations.some(
-    (location) =>
-      location.city.toLowerCase() ===
-        data.city.toLowerCase() &&
-      (location.state ?? "").toLowerCase() ===
-        (data.state ?? "").toLowerCase()
-  );
+    let existingLocations = await tx.workerLocation.findMany({
+      where: { workerProfileId: profile.id },
+    });
+    const matchesRequestedLocation = (location: { city: string; state: string | null }) =>
+      normalizeLocationPart(location.city) === normalizeLocationPart(city) &&
+      normalizeLocationPart(location.state) === normalizeLocationPart(state);
+    const alreadyExists = existingLocations.some(matchesRequestedLocation) ||
+      (existingLocations.length === 0 && profile.city !== null && matchesRequestedLocation({
+        city: profile.city,
+        state: profile.state,
+      }));
+    if (alreadyExists) throw new Error("This worker location already exists");
 
-  if (alreadyExists) {
-    throw new Error(
-      "This worker location already exists"
-    );
-  }
+    if (existingLocations.length === 0 && profile.city?.trim()) {
+      const legacyLocation = await tx.workerLocation.create({
+        data: {
+          workerProfileId: profile.id,
+          city: profile.city.trim(),
+          state: profile.state,
+          latitude: profile.latitude,
+          longitude: profile.longitude,
+          isPrimary: true,
+        },
+      });
+      existingLocations = [legacyLocation];
+    }
 
-  const shouldBePrimary =
-    data.isPrimary === true ||
-    existingLocations.length === 0;
+    const shouldBePrimary = data.isPrimary === true || existingLocations.length === 0;
+    if (shouldBePrimary) {
+      await tx.workerLocation.updateMany({
+        where: { workerProfileId: profile.id },
+        data: { isPrimary: false },
+      });
+    }
 
-  if (shouldBePrimary) {
-    await prisma.workerLocation.updateMany({
-      where: {
-        workerProfileId: profile.id,
-      },
+    const location = await tx.workerLocation.create({
       data: {
-        isPrimary: false,
+        workerProfileId: profile.id,
+        city,
+        state,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        isPrimary: shouldBePrimary,
       },
     });
-  }
 
-  return prisma.workerLocation.create({
-    data: {
-      workerProfileId: profile.id,
-      city: data.city,
-      state: data.state,
-      latitude: data.latitude,
-      longitude: data.longitude,
-      isPrimary: shouldBePrimary,
-    },
-  });
+    if (shouldBePrimary) {
+      await tx.workerProfile.update({
+        where: { id: profile.id },
+        data: {
+          city: location.city,
+          state: location.state,
+          latitude: location.latitude,
+          longitude: location.longitude,
+        },
+      });
+    }
+
+    return location;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 };
 
 export const deleteWorkerLocation = async (
@@ -247,55 +388,52 @@ export const setPrimaryWorkerLocation = async (
   userId: string,
   locationId: string
 ) => {
-  const profile = await prisma.workerProfile.findUnique({
-    where: {
-      userId,
-    },
-    select: {
-      id: true,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const profile = await tx.workerProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!profile) throw new Error("Worker profile not found");
 
-  if (!profile) {
-    throw new Error("Worker profile not found");
-  }
+    const location = await tx.workerLocation.findFirst({
+      where: { id: locationId, workerProfileId: profile.id },
+    });
+    if (!location) throw new Error("Location not found");
 
-  const location =
-    await prisma.workerLocation.findFirst({
-      where: {
-        id: locationId,
-        workerProfileId: profile.id,
+    await tx.workerLocation.updateMany({
+      where: { workerProfileId: profile.id },
+      data: { isPrimary: false },
+    });
+
+    const primaryLocation = await tx.workerLocation.update({
+      where: { id: locationId },
+      data: { isPrimary: true },
+    });
+    await tx.workerProfile.update({
+      where: { id: profile.id },
+      data: {
+        city: primaryLocation.city,
+        state: primaryLocation.state,
+        latitude: primaryLocation.latitude,
+        longitude: primaryLocation.longitude,
       },
     });
 
-  if (!location) {
-    throw new Error("Location not found");
-  }
-
-  await prisma.workerLocation.updateMany({
-    where: {
-      workerProfileId: profile.id,
-    },
-    data: {
-      isPrimary: false,
-    },
-  });
-
-  return prisma.workerLocation.update({
-    where: {
-      id: locationId,
-    },
-    data: {
-      isPrimary: true,
-    },
-  });
+    return primaryLocation;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 };
 
 export const updateWorkerProfile = async (userId: string, data: any) => {
   const existing = await prisma.workerProfile.findUnique({ where: { userId } });
   if (!existing) return createWorkerProfile(userId, data);
 
-  await prisma.workerProfile.update({ where: { userId }, data: mapProfileData(data) });
+  await prisma.$transaction(async (tx) => {
+    await tx.workerProfile.update({
+      where: { userId },
+      data: mapProfileData(data, false),
+    });
+    await syncLegacyLocationInput(tx, existing, data);
+  });
 
   if (data.skillIds && data.skillIds.length > 0) {
     await prisma.workerSkill.deleteMany({ where: { workerProfileId: existing.id } });
@@ -356,10 +494,10 @@ export const updateAvailability = async (userId: string, isAvailable: boolean) =
 export const updateLocation = async (userId: string, data: any) => {
   const existing = await prisma.workerProfile.findUnique({ where: { userId } });
   if (!existing) throw new Error("Worker profile not found. Please complete your profile before updating location.");
-  return prisma.workerProfile.update({
-    where: { userId },
-    data:  { latitude: data.latitude, longitude: data.longitude, city: data.city, state: data.state },
-  });
+  return prisma.$transaction(async (tx) => {
+    await syncLegacyLocationInput(tx, existing, data);
+    return tx.workerProfile.findUnique({ where: { id: existing.id } });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 };
 
 // ── Wallet function ───────────────────────────────────────────────────────────
@@ -404,6 +542,8 @@ const requirementOfferSelect = {
   id: true,
   requirementId: true,
   status: true,
+  matchScore: true,
+  matchReason: true,
   offeredAt: true,
   acceptedAt: true,
   assignedAt: true,
@@ -434,6 +574,7 @@ const requirementOfferSelect = {
       status: true,
       city: true,
       state: true,
+      address: true,
       shiftTiming: true,
       salaryBudget: true,
       minExperience: true,
@@ -458,6 +599,7 @@ const requirementOfferSelect = {
         select: {
           partnerProfile: {
             select: {
+              businessName: true,
               partnerType: true,
               status: true,
               user: {
@@ -466,6 +608,9 @@ const requirementOfferSelect = {
                 },
               },
             },
+          },
+          employerProfile: {
+            select: { companyName: true },
           },
         },
       },
@@ -507,9 +652,13 @@ export const getWorkerRequirementOffers = async (
       requirement.source === "PARTNER_CLIENT"
         ? createdBy.partnerProfile
         : null;
+    const companyName = partner
+      ? partner.businessName ?? partner.user.name
+      : createdBy.employerProfile?.companyName ?? null;
 
     return {
       ...candidate,
+      companyName,
       isReplaced: replacementRequestsCurrent.length > 0,
       replacementRequest: replacementRequestsReplacement[0]
         ? {
@@ -523,7 +672,7 @@ export const getWorkerRequirementOffers = async (
         ...safeRequirement,
         partner: partner
           ? {
-              displayName: partner.user.name,
+              displayName: partner.businessName ?? partner.user.name,
               partnerType: partner.partnerType,
               status: partner.status,
             }
@@ -666,14 +815,8 @@ export const acceptWorkerRequirementOffer = async (
       throw new Error("Worker no longer offers this work type");
     }
 
-    const city = candidate.requirement.city.toLocaleLowerCase();
-    const canWorkInCity =
-      worker.city?.toLocaleLowerCase() === city ||
-      worker.locations.some(
-        (location) => location.city.toLocaleLowerCase() === city
-      );
-    if (!canWorkInCity) {
-      throw new Error("Worker no longer works in the required city");
+    if (!workerMatchesRequirementLocation(worker, candidate.requirement)) {
+      throw new Error("Worker no longer works in the required location");
     }
 
     const [activeBooking, activeRequirementAssignment] = await Promise.all([

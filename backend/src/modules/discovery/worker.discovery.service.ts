@@ -1,5 +1,6 @@
 import prisma from "../../config/prisma";
 import { customerWorkerSelect } from "../worker/worker.public";
+import { workerLocationWhere } from "../../utils/workerLocation";
 
 export const getWorkers = async (filters: {
   categoryId?: string;
@@ -56,21 +57,15 @@ export const getWorkers = async (filters: {
     });
   }
 
+  const andConditions: any[] = [...skillConditions];
+  if (city) andConditions.push(workerLocationWhere(city));
+
   const where: any = {
     // PUBLIC DISCOVERY RULES — NEVER OVERRIDE THESE
     isVerified: true,
     isSuspended: false,
 
-    ...(skillConditions.length > 0 && {
-      AND: skillConditions,
-    }),
-
-    ...(city && {
-      city: {
-        equals: city,
-        mode: "insensitive",
-      },
-    }),
+    ...(andConditions.length > 0 && { AND: andConditions }),
 
     ...(isAvailable !== undefined && {
       isAvailable,
@@ -90,16 +85,25 @@ export const getWorkers = async (filters: {
         },
       },
       {
-        city: {
-          contains: keyword,
-          mode: "insensitive",
+        locations: {
+          some: {
+            OR: [
+              { city: { contains: keyword, mode: "insensitive" } },
+              { state: { contains: keyword, mode: "insensitive" } },
+            ],
+          },
         },
       },
       {
-        state: {
-          contains: keyword,
-          mode: "insensitive",
-        },
+        AND: [
+          { locations: { none: {} } },
+          {
+            OR: [
+              { city: { contains: keyword, mode: "insensitive" } },
+              { state: { contains: keyword, mode: "insensitive" } },
+            ],
+          },
+        ],
       },
       {
         skills: {

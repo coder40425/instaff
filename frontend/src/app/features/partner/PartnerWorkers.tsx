@@ -21,6 +21,7 @@ import { partnerService } from '../../services/partnerApi';
 import type { PublicWorkerProfile, WorkerDirectoryFilters } from '../../types';
 import { PartnerStatusBadge, PartnerWorkerStatusBadge } from '../../components/ui/partner/PartnerStatusBadge';
 import type { PartnerAssociatedWorker, PartnerWorkerOperationalStatus } from '../../types/partner';
+import { formatWorkerLocations } from '../../utils/workerLocations';
 
 const PAGE_SIZE = 20;
 type Tab = 'discovery' | 'workforce';
@@ -38,8 +39,8 @@ const unique = (values: (string | undefined)[]) =>
 const formatLabel = (value: string) =>
   value.split('_').map((word) => word.charAt(0) + word.slice(1).toLowerCase()).join(' ');
 
-const locationOf = (worker: { city?: string | null; state?: string | null }) =>
-  [worker.city, worker.state].filter(Boolean).join(', ');
+const locationOf = (worker: { city?: string | null; state?: string | null; locations?: { city: string; state?: string | null; isPrimary: boolean }[] }) =>
+  formatWorkerLocations(worker);
 
 const messageOf = (error: unknown) =>
   (error as any)?.response?.data?.message || (error as Error | null)?.message;
@@ -148,7 +149,7 @@ export default function PartnerWorkers() {
   const workforceTerm = workforceSearch.trim().toLowerCase();
   const matchingWorkers = associatedWorkers.filter((worker) => {
     const text = [
-      worker.user?.name, worker.city, worker.state,
+      worker.user?.name, locationOf(worker),
       ...worker.skills.map((skill) => skill.subCategory.name),
       ...worker.skills.map((skill) => skill.subCategory.category?.name),
     ].filter(Boolean).join(' ').toLowerCase();

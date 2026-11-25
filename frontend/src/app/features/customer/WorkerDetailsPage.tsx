@@ -8,6 +8,7 @@ import {
   workerService, reviewService, categoryService, getCustomerVisibleSubCategoryIds, isCustomerVisibleSubCategory,
 } from '../../services/api';
 import type { Category } from '../../types';
+import { formatWorkerLocations } from '../../utils/workerLocations';
 import {
   Star,
   MapPin,
@@ -228,9 +229,7 @@ export default function WorkerDetailsPage() {
     <div className="flex items-center gap-1 mt-0.5">
       <MapPin className="w-4 h-4" />
       <span className="font-semibold text-sm">
-        {worker.city
-          ? `${worker.city}${worker.state ? `, ${worker.state}` : ''}`
-          : 'Location not set'}
+        {formatWorkerLocations(worker) || 'Location not set'}
       </span>
     </div>
   </div>

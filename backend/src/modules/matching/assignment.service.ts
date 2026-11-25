@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma";
 import { customerWorkerSelect } from "../worker/worker.public";
+import { workerMatchesRequirementLocation } from "../../utils/workerLocation";
 import { assertRequirementOwner } from "../requirement/requirement.access";
 import {
   findMatchingWorkers,
@@ -350,6 +351,9 @@ export const assignRequirementWorker = async (
       workerProfile: {
         include: {
           user: { select: { id: true, name: true, phone: true } },
+          locations: {
+            orderBy: [{ isPrimary: "desc" }, { city: "asc" }],
+          },
         },
       },
     },
@@ -404,6 +408,10 @@ export const assignRequirementWorker = async (
     throw new Error(
       "Worker does not meet the experience requirement"
     );
+  }
+
+  if (!workerMatchesRequirementLocation(worker, requirement)) {
+    throw new Error("Worker no longer works in the required location");
   }
 
   const owningPartner =

@@ -9,6 +9,7 @@ import { Textarea } from '../../components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Badge } from '../../components/ui/badge';
 import { adminService } from '../../services/api';
+import { formatWorkerLocations } from '../../utils/workerLocations';
 import {
   CheckCircle,
   XCircle,
@@ -140,8 +141,7 @@ export default function PendingWorkers() {
                       <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
                         <MapPin className="w-4 h-4" />
                         <span>
-                          {[worker.city, worker.state].filter(Boolean).join(', ') ||
-                            'Not specified'}
+                          {formatWorkerLocations(worker) || 'Not specified'}
                         </span>
                       </div>
                       <div className="text-neutral-600 dark:text-neutral-400">

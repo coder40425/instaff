@@ -34,6 +34,7 @@ import type {
   RequirementStatus,
   ShiftTiming,
 } from '../../../types';
+import { formatWorkerLocations } from '../../../utils/workerLocations';
 
 import {
   AlertCircle,
@@ -1207,12 +1208,9 @@ export default function CrmRequirementDetails() {
                                 experience
                               </span>
 
-                              {worker?.city && (
+                              {worker && formatWorkerLocations(worker) && (
                                 <span>
-                                  {worker.city}
-                                  {worker.state
-                                    ? `, ${worker.state}`
-                                    : ''}
+                                  {formatWorkerLocations(worker)}
                                 </span>
                               )}
 

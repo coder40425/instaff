@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../componen
 import BookingCancellationDialog from '../../components/BookingCancellationDialog';
 import BookingCancellationDetails from '../../components/BookingCancellationDetails';
 import { adminService } from '../../services/api';
+import { formatWorkerLocations } from '../../utils/workerLocations';
 import { Calendar, MapPin, IndianRupee, RefreshCw, User, Phone, AlertTriangle, Tag, Hash } from 'lucide-react';
 
 export default function BookingManagement() {
@@ -338,7 +339,7 @@ export default function BookingManagement() {
                         <span>{worker.user?.phone || 'N/A'}</span>
                       </div>
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-neutral-500">
-                        <span>{worker.city || 'N/A'}</span>
+                        <span>{formatWorkerLocations(worker) || 'N/A'}</span>
                         <span>·</span>
                         <span>{worker.experience ?? 0} yrs exp</span>
                         <span>·</span>

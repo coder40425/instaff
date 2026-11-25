@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { workerService } from '../../services/api';
 import type { WorkerRequirementOffer } from '../../types';
+import { BriefcaseBusiness, Building2, CalendarDays, Clock3, IndianRupee, MapPin, Target } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 const QUERY_KEY = ['worker-requirement-offers'];
 
@@ -35,6 +37,48 @@ const badgeVariant = (status: string): 'default' | 'secondary' | 'destructive' |
   return 'secondary';
 };
 
+const formatLabel = (value: string) =>
+  value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const formatDate = (value?: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  });
+};
+
+const locationLabel = (offer: WorkerRequirementOffer) =>
+  [offer.requirement.address, offer.requirement.city, offer.requirement.state]
+    .filter(Boolean)
+    .join(', ');
+
+const companyLabel = (offer: WorkerRequirementOffer) =>
+  offer.companyName || (offer.requirement.source === 'PARTNER_CLIENT'
+    ? offer.requirement.partner?.displayName || 'Partner'
+    : 'NearPassway');
+
+function OpportunityDetail({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string | null | undefined;
+}) {
+  if (!value) return null;
+  return (
+    <div className="flex min-w-0 items-start gap-2.5 rounded-lg bg-neutral-50 p-3 dark:bg-neutral-900/70">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-neutral-500" />
+      <div className="min-w-0">
+        <p className="text-xs text-neutral-500">{label}</p>
+        <p className="break-words text-sm font-medium">{value}</p>
+      </div>
+    </div>
+  );
+}
+
 function RequirementCard({
   offer,
   onOpen,
@@ -42,32 +86,58 @@ function RequirementCard({
   offer: WorkerRequirementOffer;
   onOpen: () => void;
 }) {
-  const partner = offer.requirement.partner;
+  const requirement = offer.requirement;
+  const salary = requirement.salaryBudget == null
+    ? null
+    : `₹${requirement.salaryBudget.toLocaleString('en-IN')}/month`;
+  const joiningDate = formatDate(requirement.joiningDate);
+  const matchScore = offer.matchScore == null ? null : `${offer.matchScore} points`;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
-      <div className="min-w-0">
-        <p className="font-semibold">
-          {offer.requirement.category.name} · {offer.requirement.subCategory.name}
-        </p>
-        <p className="mt-1 text-sm text-neutral-500">
-          {offer.requirement.source === 'PARTNER_CLIENT'
-            ? `Partner${partner?.displayName ? ` · ${partner.displayName}` : ''}`
-            : 'NearPassway'}
-          {' · '}
-          {[offer.requirement.city, offer.requirement.state].filter(Boolean).join(', ')}
-        </p>
-        {offer.replacementRequest && (
-          <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">
-            Replacement offer for {offer.replacementRequest.originalWorkerName}
-          </p>
-        )}
+    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
+      <div className="flex flex-wrap items-start justify-between gap-4 p-4 sm:p-5">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+            <BriefcaseBusiness className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="break-words font-semibold">
+              {requirement.category.name} · {requirement.subCategory.name}
+            </p>
+            <p className="mt-1 flex items-center gap-1.5 text-sm text-neutral-500">
+              <Building2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="break-words">{companyLabel(offer)}</span>
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant={badgeVariant(displayStatus(offer))}>
+            {displayStatus(offer).replace(/_/g, ' ')}
+          </Badge>
+          <Button size="sm" variant="outline" onClick={onOpen}>View details</Button>
+        </div>
       </div>
-      <div className="flex items-center gap-3">
-        <Badge variant={badgeVariant(displayStatus(offer))}>
-          {displayStatus(offer).replace(/_/g, ' ')}
-        </Badge>
-        <Button size="sm" variant="outline" onClick={onOpen}>View details</Button>
+
+      <div className="grid gap-2 border-t border-neutral-100 px-4 py-3 dark:border-neutral-800 sm:grid-cols-2 lg:grid-cols-3 sm:px-5">
+        <OpportunityDetail icon={MapPin} label="Work location" value={locationLabel(offer)} />
+        <OpportunityDetail icon={IndianRupee} label="Monthly budget" value={salary} />
+        <OpportunityDetail icon={BriefcaseBusiness} label="Employment type" value={requirement.employmentTypes.length
+          ? requirement.employmentTypes.map(formatLabel).join(', ')
+          : null} />
+        <OpportunityDetail icon={Clock3} label="Shift" value={requirement.shiftTiming ? formatLabel(requirement.shiftTiming) : null} />
+        <OpportunityDetail icon={CalendarDays} label="Joining date" value={joiningDate} />
+        <OpportunityDetail icon={Target} label="Match score" value={matchScore} />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-100 px-4 py-3 text-xs text-neutral-500 dark:border-neutral-800 sm:px-5">
+        <span>{requirement.minExperience} years minimum experience</span>
+        {requirement.workMode && <span>{formatLabel(requirement.workMode)}</span>}
+        {requirement.workGeography && <span>{formatLabel(requirement.workGeography)} work area</span>}
+        {offer.replacementRequest && (
+          <span className="font-medium text-amber-700 dark:text-amber-300">
+            Replacement offer
+          </span>
+        )}
       </div>
     </div>
   );
@@ -189,7 +259,7 @@ export default function WorkerRequirements() {
         )}
 
         <Dialog open={!!selectedOffer} onOpenChange={(open) => { if (!open) setSelectedOfferId(null); }}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
             {selectedOffer && (
               <>
                 <DialogHeader>
@@ -199,37 +269,63 @@ export default function WorkerRequirements() {
                 </DialogHeader>
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm text-neutral-500">
-                      {selectedOffer.requirement.source === 'PARTNER_CLIENT'
-                        ? `Partner${selectedOffer.requirement.partner?.displayName ? ` · ${selectedOffer.requirement.partner.displayName}` : ''}`
-                        : 'NearPassway'}
+                    <p className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
+                      <Building2 className="h-4 w-4 text-neutral-500" />
+                      {companyLabel(selectedOffer)}
                     </p>
                     <Badge variant={badgeVariant(displayStatus(selectedOffer))}>
                       {displayStatus(selectedOffer).replace(/_/g, ' ')}
                     </Badge>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                    <p><span className="text-neutral-500">Location:</span> {[selectedOffer.requirement.city, selectedOffer.requirement.state].filter(Boolean).join(', ')}</p>
-                    <p><span className="text-neutral-500">Joining:</span> {new Date(selectedOffer.requirement.joiningDate).toLocaleDateString()}</p>
-                    <p><span className="text-neutral-500">Minimum experience:</span> {selectedOffer.requirement.minExperience} years</p>
-                    <p><span className="text-neutral-500">Workers needed:</span> {selectedOffer.requirement.requiredWorkerCount}</p>
-                    {selectedOffer.requirement.shiftTiming && (
-                      <p><span className="text-neutral-500">Shift:</span> {selectedOffer.requirement.shiftTiming.replace(/_/g, ' ')}</p>
-                    )}
+                  <div className="grid gap-3 rounded-xl border border-blue-100 bg-blue-50/70 p-4 dark:border-blue-900/60 dark:bg-blue-950/20 sm:grid-cols-[1fr_1.5fr]">
                     {selectedOffer.requirement.salaryBudget != null && (
-                      <p><span className="text-neutral-500">Budget:</span> ₹{selectedOffer.requirement.salaryBudget}/month</p>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-blue-800/70 dark:text-blue-200/70">Monthly budget</p>
+                        <p className="mt-1 text-2xl font-bold text-blue-950 dark:text-blue-100">
+                          ₹{selectedOffer.requirement.salaryBudget.toLocaleString('en-IN')}
+                          <span className="ml-1 text-sm font-medium">/month</span>
+                        </p>
+                      </div>
                     )}
-                    {selectedOffer.requirement.employmentTypes.length > 0 && (
-                      <p><span className="text-neutral-500">Employment:</span> {selectedOffer.requirement.employmentTypes.map((type) => type.replace(/_/g, ' ').toLowerCase()).join(', ')}</p>
-                    )}
-                    {selectedOffer.requirement.workMode && (
-                      <p><span className="text-neutral-500">Work mode:</span> {selectedOffer.requirement.workMode.replace(/_/g, ' ')}</p>
-                    )}
-                    {selectedOffer.requirement.workGeography && (
-                      <p><span className="text-neutral-500">Service area:</span> {selectedOffer.requirement.workGeography.toLowerCase()}</p>
-                    )}
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-blue-800/70 dark:text-blue-200/70">Work location</p>
+                      <p className="mt-1 flex items-start gap-2 text-sm font-semibold text-blue-950 dark:text-blue-100">
+                        <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span className="break-words">{locationLabel(selectedOffer) || 'Location not specified'}</span>
+                      </p>
+                    </div>
                   </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <OpportunityDetail icon={BriefcaseBusiness} label="Employment type" value={selectedOffer.requirement.employmentTypes.length
+                      ? selectedOffer.requirement.employmentTypes.map(formatLabel).join(', ')
+                      : null} />
+                    <OpportunityDetail icon={BriefcaseBusiness} label="Work mode" value={selectedOffer.requirement.workMode
+                      ? formatLabel(selectedOffer.requirement.workMode)
+                      : null} />
+                    <OpportunityDetail icon={Clock3} label="Shift" value={selectedOffer.requirement.shiftTiming
+                      ? formatLabel(selectedOffer.requirement.shiftTiming)
+                      : null} />
+                    <OpportunityDetail icon={CalendarDays} label="Joining date" value={formatDate(selectedOffer.requirement.joiningDate)} />
+                    <OpportunityDetail icon={Target} label="Minimum experience" value={`${selectedOffer.requirement.minExperience} years`} />
+                    <OpportunityDetail icon={Building2} label="Workers needed" value={`${selectedOffer.requirement.requiredWorkerCount}`} />
+                    <OpportunityDetail icon={BriefcaseBusiness} label="Work geography" value={selectedOffer.requirement.workGeography
+                      ? formatLabel(selectedOffer.requirement.workGeography)
+                      : null} />
+                    <OpportunityDetail icon={Target} label="Match score" value={selectedOffer.matchScore == null
+                      ? null
+                      : `${selectedOffer.matchScore} points`} />
+                  </div>
+
+                  {selectedOffer.matchReason && (
+                    <div className="rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+                      <p className="font-medium">Matching details</p>
+                      <p className="mt-1 text-neutral-600 dark:text-neutral-300">
+                        {selectedOffer.matchReason.split(',').map((reason) => reason.trim()).filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                  )}
 
                   {selectedOffer.replacementRequest && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/20">
@@ -244,10 +340,10 @@ export default function WorkerRequirements() {
                   )}
 
                   <div className="space-y-1 text-xs text-neutral-500">
-                    {selectedOffer.offeredAt && <p>Offered: {new Date(selectedOffer.offeredAt).toLocaleString()}</p>}
-                    {selectedOffer.acceptedAt && <p>Accepted: {new Date(selectedOffer.acceptedAt).toLocaleString()}</p>}
-                    {selectedOffer.assignedAt && <p>Assigned: {new Date(selectedOffer.assignedAt).toLocaleString()}</p>}
-                    {selectedOffer.rejectedAt && <p>Rejected: {new Date(selectedOffer.rejectedAt).toLocaleString()}</p>}
+                    {formatDate(selectedOffer.offeredAt) && <p>Offered: {new Date(selectedOffer.offeredAt!).toLocaleString()}</p>}
+                    {formatDate(selectedOffer.acceptedAt) && <p>Accepted: {new Date(selectedOffer.acceptedAt!).toLocaleString()}</p>}
+                    {formatDate(selectedOffer.assignedAt) && <p>Assigned: {new Date(selectedOffer.assignedAt!).toLocaleString()}</p>}
+                    {formatDate(selectedOffer.rejectedAt) && <p>Rejected: {new Date(selectedOffer.rejectedAt!).toLocaleString()}</p>}
                   </div>
 
                   {selectedOffer.status === 'OFFERED' && !canRespond(selectedOffer) && (

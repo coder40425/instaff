@@ -1,6 +1,10 @@
 import prisma from "../../config/prisma";
 import { customerWorkerSelect } from "../worker/worker.public";
 import { assertRequirementOwner } from "../requirement/requirement.access";
+import {
+  workerLocationWhere,
+  workerMatchesRequirementLocation,
+} from "../../utils/workerLocation";
 
 type RequirementForMatching = {
   id: string;
@@ -77,27 +81,7 @@ export const findMatchingWorkers = async (
           }
         : {}),
 
-      // Worker can match through:
-      // 1. Profile city
-      // 2. Any saved WorkerLocation
-      OR: [
-        {
-          city: {
-            equals: requirement.city,
-            mode: "insensitive",
-          },
-        },
-        {
-          locations: {
-            some: {
-              city: {
-                equals: requirement.city,
-                mode: "insensitive",
-              },
-            },
-          },
-        },
-      ],
+      ...workerLocationWhere(requirement.city, requirement.state),
     },
 
     include: workerInclude,
@@ -146,42 +130,14 @@ export const findMatchingWorkers = async (
     score += 40;
     reasons.push("Required work type matched");
 
-    // City
-    if (
-      worker.city &&
-      worker.city.toLowerCase() === requirement.city.toLowerCase()
-    ) {
+    // Location scoring follows the same city/state pair used for eligibility.
+    if (workerMatchesRequirementLocation(worker, requirement)) {
       score += 20;
-      reasons.push("City matched");
-    } else {
-      const savedLocation = worker.locations.find(
-        (location) =>
-          location.city.toLowerCase() ===
-          requirement.city.toLowerCase()
-      );
-
-      if (savedLocation) {
-        score += 20;
-        reasons.push("Saved work location matched");
+      reasons.push(worker.locations.length > 0 ? "Saved work location matched" : "City matched");
+      if (requirement.state?.trim()) {
+        score += 5;
+        reasons.push("State matched");
       }
-    }
-
-    // State
-    const workerStateMatched =
-      !!requirement.state &&
-      (
-        worker.state?.toLowerCase() ===
-          requirement.state.toLowerCase() ||
-        worker.locations.some(
-          (location) =>
-            location.state?.toLowerCase() ===
-            requirement.state!.toLowerCase()
-        )
-      );
-
-    if (workerStateMatched) {
-      score += 5;
-      reasons.push("State matched");
     }
 
     // Experience
@@ -300,14 +256,7 @@ export const getRequirementMatchingExclusionSummary = async (
       requirement.preferredWorkerProfileId
         ? { id: requirement.preferredWorkerProfileId }
         : {}),
-      OR: [
-        { city: { equals: requirement.city, mode: "insensitive" } },
-        {
-          locations: {
-            some: { city: { equals: requirement.city, mode: "insensitive" } },
-          },
-        },
-      ],
+      ...workerLocationWhere(requirement.city, requirement.state),
     },
     select: {
       id: true,

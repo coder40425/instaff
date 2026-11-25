@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma";
 import { releaseWorkerAvailabilityIfIdle } from "../matching/assignment.service";
+import { workerLocationWhere } from "../../utils/workerLocation";
 import {
   cancelBookingWithRole,
   includeBookingCancellationMetadata,
@@ -311,6 +312,7 @@ export const getPendingWorkers = async () => {
     include: {
       user: true,
       skills: { include: { subCategory: { include: { category: true } } } },
+      locations: { orderBy: [{ isPrimary: "desc" }, { city: "asc" }] },
     },
   });
 };
@@ -516,12 +518,14 @@ export const getReplacementCandidates = async (bookingId: string) => {
   return prisma.workerProfile.findMany({
     where: {
       isVerified: true, isAvailable: true, isSuspended: false,
-      city: booking.city, userId: { not: booking.workerId },
+      ...workerLocationWhere(booking.city),
+      userId: { not: booking.workerId },
       skills: { some: { subCategoryId: booking.subCategoryId } },
     },
     include: {
       user: true,
       skills: { include: { subCategory: { include: { category: true } } } },
+      locations: { orderBy: [{ isPrimary: "desc" }, { city: "asc" }] },
     },
   });
 };
