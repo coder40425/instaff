@@ -11,6 +11,62 @@ export type BookingStatus =
 
 export type BookingType = 'INSTANT' | 'SCHEDULED';
 
+export type ServiceFormat =
+  | 'ONE_TIME'
+  | 'HOURLY'
+  | 'SESSION'
+  | 'DAILY'
+  | 'MULTIPLE_VISITS'
+  | 'WEEKLY'
+  | 'MONTHLY';
+
+export type BookingVisitStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+
+export interface BookingVisit {
+  id: string;
+  bookingId: string;
+  sequence: number;
+  scheduledDate: string;
+  durationMinutes: number;
+  status: BookingVisitStatus;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
+}
+
+export interface CreateBookingVisitInput {
+  scheduledDate: string;
+  durationMinutes: number;
+}
+
+export interface CreateBookingScheduleInput {
+  startDate: string;
+  visitTime: string;
+  timeZone: string;
+  durationMinutes: number;
+  weekday?: number;
+  dayOfMonth?: number;
+  endDate?: string;
+  occurrenceCount?: number;
+}
+
+export interface CreateBookingRequest {
+  requestId?: string;
+  workerId: string;
+  bookingType: BookingType;
+  subCategoryId: string;
+  address: string;
+  city: string;
+  servicePrice: number;
+  notes?: string;
+  serviceFormat: ServiceFormat;
+  scheduledDate?: string;
+  durationMinutes?: number;
+  visits?: CreateBookingVisitInput[];
+  schedule?: CreateBookingScheduleInput;
+}
+
 export type PaymentStatus = 'PENDING' | 'PAID';
 
 export type ComplaintStatus = 'OPEN' | 'RESOLVED' | 'REJECTED';
@@ -253,17 +309,20 @@ export interface Booking {
   customerId: string;
   workerId: string;
   bookingType: BookingType;
+  serviceFormat?: ServiceFormat;
   subCategoryId: string;
   subCategory?: SubCategory;
   address: string;
   city: string;
-  scheduledDate?: string;
+  scheduledDate: string;
   durationMinutes: number;
-  servicePrice: number;
+  servicePrice: number | null;
   notes?: string;
   status: BookingStatus;
   businessModel: BusinessModel;
   paymentStatus: PaymentStatus;
+  isPaidByCustomer?: boolean;
+  visits?: BookingVisit[];
   cancelledAt?: string | null;
   cancellationReason?: string | null;
   cancelledBy?: Role | null;
@@ -560,6 +619,7 @@ export interface Requirement {
 
 export interface CrmRequirementListItem {
   id: string;
+  businessModel: BusinessModel;
 
   city: string;
   state?: string | null;
@@ -667,6 +727,7 @@ export interface CrmOverviewAttention {
 
 export interface CrmRecentRequirement {
   id: string;
+  businessModel: BusinessModel;
 
   city: string;
   state?: string | null;

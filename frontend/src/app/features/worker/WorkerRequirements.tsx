@@ -133,6 +133,9 @@ function RequirementCard({
           : null} />
         <OpportunityDetail icon={Clock3} label="Shift" value={requirement.shiftTiming ? formatLabel(requirement.shiftTiming) : null} />
         <OpportunityDetail icon={CalendarDays} label="Joining date" value={joiningDate} />
+        {requirement.businessModel === 'BULK_MANPOWER' && (
+          <OpportunityDetail icon={Building2} label="Workers requested" value={`${requirement.requiredWorkerCount}`} />
+        )}
         <OpportunityDetail icon={Target} label="Match score" value={matchScore} />
       </div>
 

@@ -19,6 +19,46 @@ const REGULAR_EMPLOYMENT_TYPES = new Set([
   "PART_TIME",
 ]);
 
+const BULK_EMPLOYMENT_TYPES = new Set([
+  "PERMANENT",
+  "CONTRACT",
+  "TEMPORARY",
+]);
+
+const assertBulkRequirement = (requirement: {
+  requiredWorkerCount: number;
+  assignmentMode: string;
+  employmentTypes: string[];
+  shiftTiming?: string | null;
+  city: string;
+  joiningDate: string;
+  preferredWorkerProfileId?: string | null;
+}) => {
+  if (!Number.isInteger(requirement.requiredWorkerCount) || requirement.requiredWorkerCount <= 1) {
+    throw new Error("Bulk Manpower requires at least two workers");
+  }
+  if (requirement.assignmentMode !== "BULK_WORKFORCE") {
+    throw new Error("Bulk Manpower must use the bulk workforce assignment pool");
+  }
+  if (requirement.employmentTypes.length !== 1 || !BULK_EMPLOYMENT_TYPES.has(requirement.employmentTypes[0])) {
+    throw new Error("Choose one valid Bulk Manpower employment arrangement");
+  }
+  if (!requirement.shiftTiming) throw new Error("Choose the common shift for all workers");
+  if (requirement.city.trim().length < 2) throw new Error("Enter a valid work city");
+  if (requirement.preferredWorkerProfileId) {
+    throw new Error("Bulk Manpower uses the shared matching pool, not a preferred single worker");
+  }
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(requirement.joiningDate);
+  if (!dateMatch) throw new Error("Enter a valid joining date");
+  const [, year, month, day] = dateMatch;
+  const joiningDate = new Date(0);
+  joiningDate.setUTCHours(0, 0, 0, 0);
+  joiningDate.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
+  if (joiningDate.toISOString().slice(0, 10) !== requirement.joiningDate) {
+    throw new Error("Enter a valid joining date");
+  }
+};
+
 const requirementInclude = {
   category: true,
   subCategory: true,
@@ -124,20 +164,29 @@ export const createRequirement = async (
   userId: string,
   data: CreateRequirementInput
 ) => {
-  if ((data.businessModel ?? "REGULAR_EMPLOYMENT") !== "REGULAR_EMPLOYMENT") {
-    throw new Error("Only Regular Employment requirements can be created right now");
-  }
-
-  if (data.requiredWorkerCount !== undefined && data.requiredWorkerCount !== 1) {
-    throw new Error("Regular Employment requirements must request one worker");
-  }
-
-  if (data.assignmentMode === "BULK_WORKFORCE") {
-    throw new Error("Regular Employment requirements cannot use bulk assignment");
-  }
-
-  if (data.employmentTypes.some((type) => !REGULAR_EMPLOYMENT_TYPES.has(type))) {
-    throw new Error("Choose a valid employment type for Regular Employment");
+  const businessModel = data.businessModel ?? "REGULAR_EMPLOYMENT";
+  if (businessModel === "REGULAR_EMPLOYMENT") {
+    if (data.requiredWorkerCount !== undefined && data.requiredWorkerCount !== 1) {
+      throw new Error("Regular Employment requirements must request one worker");
+    }
+    if (data.assignmentMode === "BULK_WORKFORCE") {
+      throw new Error("Regular Employment requirements cannot use bulk assignment");
+    }
+    if (data.employmentTypes.some((type) => !REGULAR_EMPLOYMENT_TYPES.has(type))) {
+      throw new Error("Choose a valid employment type for Regular Employment");
+    }
+  } else if (businessModel === "BULK_MANPOWER") {
+    assertBulkRequirement({
+      requiredWorkerCount: data.requiredWorkerCount,
+      assignmentMode: data.assignmentMode,
+      employmentTypes: data.employmentTypes,
+      shiftTiming: data.shiftTiming,
+      city: data.city,
+      joiningDate: data.joiningDate,
+      preferredWorkerProfileId: data.preferredWorkerProfileId,
+    });
+  } else {
+    throw new Error("Gig Work bookings must use the Booking workflow");
   }
 
   const actor = await getRequirementActor(userId);
@@ -188,7 +237,7 @@ export const createRequirement = async (
 
   return prisma.requirement.create({
     data: {
-      businessModel: "REGULAR_EMPLOYMENT",
+      businessModel,
       createdById: userId,
 
       categoryId: data.categoryId,
@@ -214,7 +263,7 @@ export const createRequirement = async (
         data.assignmentMode ?? "SINGLE_WITH_BACKUP",
 
       backupPoolSize:
-        data.backupPoolSize ?? 10,
+        data.backupPoolSize ?? (businessModel === "BULK_MANPOWER" ? 0 : 10),
 
       preferredWorkerProfileId:
         data.preferredWorkerProfileId ?? null,
@@ -342,6 +391,18 @@ export const updateRequirement = async (
     if (data.employmentTypes?.some((type) => !REGULAR_EMPLOYMENT_TYPES.has(type))) {
       throw new Error("Choose a valid employment type for Regular Employment");
     }
+  } else if (requirement.businessModel === "BULK_MANPOWER") {
+    assertBulkRequirement({
+      requiredWorkerCount,
+      assignmentMode,
+      employmentTypes: data.employmentTypes ?? requirement.employmentTypes,
+      shiftTiming: data.shiftTiming ?? requirement.shiftTiming,
+      city: data.city ?? requirement.city,
+      joiningDate: data.joiningDate ?? requirement.joiningDate.toISOString().slice(0, 10),
+      preferredWorkerProfileId: data.preferredWorkerProfileId !== undefined
+        ? data.preferredWorkerProfileId
+        : requirement.preferredWorkerProfileId,
+    });
   }
 
   const preferredWorkerProfileId =

@@ -131,6 +131,11 @@ export const cancelBookingWithRole = async (
       );
     }
 
+    await tx.bookingVisit.updateMany({
+      where: { bookingId, status: { in: ["SCHEDULED", "IN_PROGRESS"] } },
+      data: { status: "CANCELLED", cancelledAt: new Date(), cancellationReason },
+    });
+
     await releaseWorkerAvailabilityIfIdle(tx, booking.workerId);
     return tx.booking.findUniqueOrThrow({ where: { id: bookingId } });
   });

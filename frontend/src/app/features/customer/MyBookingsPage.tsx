@@ -13,6 +13,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { bookingService, reviewService } from '../../services/api';
 import { Calendar, MapPin, DollarSign, Star, RefreshCw, AlertTriangle } from 'lucide-react';
 
+const serviceFormatLabel = (format: unknown) => {
+  const labels: Record<string, string> = {
+    ONE_TIME: 'One-Time', HOURLY: 'Hourly', SESSION: 'Session', DAILY: 'Daily',
+    MULTIPLE_VISITS: 'Multiple Visits', WEEKLY: 'Weekly', MONTHLY: 'Monthly',
+  };
+  return typeof format === 'string' ? labels[format] || labels.ONE_TIME : labels.ONE_TIME;
+};
+
 export default function MyBookingsPage() {
   const queryClient = useQueryClient();
 
@@ -32,7 +40,7 @@ export default function MyBookingsPage() {
   });
 
   const startServiceMutation = useMutation({
-    mutationFn: (id: string) => bookingService.startService(id),
+    mutationFn: ({ id, visitId }: { id: string; visitId?: string }) => bookingService.startService(id, visitId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer-bookings'] });
       toast.success('Service started!');
@@ -43,7 +51,7 @@ export default function MyBookingsPage() {
   });
 
   const completeServiceMutation = useMutation({
-    mutationFn: (id: string) => bookingService.completeService(id),
+    mutationFn: ({ id, visitId }: { id: string; visitId?: string }) => bookingService.completeService(id, visitId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer-bookings'] });
       toast.success('Service completed!');
@@ -212,7 +220,7 @@ export default function MyBookingsPage() {
                 <CardHeader>
                   <div className="flex justify-between items-start gap-3">
                     <div className="min-w-0">
-                      <CardTitle className="truncate">{booking.serviceCategory}</CardTitle>
+                      <CardTitle className="truncate">{booking.subCategory?.name || 'Service'}{booking.subCategory?.category?.name ? <span className="text-sm font-normal text-neutral-400 ml-2">({booking.subCategory.category.name})</span> : null}</CardTitle>
                       <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5 font-mono truncate">
                         Booking ID: {booking.id}
                       </p>
@@ -227,7 +235,7 @@ export default function MyBookingsPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-neutral-500 flex-shrink-0" />
-                      <span>{new Date(booking.createdAt).toLocaleDateString()}</span>
+                      <span>{new Date(booking.scheduledDate).toLocaleString()}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-neutral-500 flex-shrink-0" />
@@ -235,8 +243,18 @@ export default function MyBookingsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <DollarSign className="w-4 h-4 text-neutral-500 flex-shrink-0" />
-                      <span>₹{booking.servicePrice}</span>
+                      <span>₹{booking.servicePrice ?? '—'} total</span>
                     </div>
+                  </div>
+
+                  <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3 space-y-2 text-sm">
+                    <p><strong>Format:</strong> {serviceFormatLabel(booking.serviceFormat)}</p>
+                    <p><strong>First scheduled service:</strong> {new Date(booking.scheduledDate).toLocaleString()} · {booking.durationMinutes} min</p>
+                    {booking.visits?.length > 0 && <>
+                      <p className="text-neutral-600 dark:text-neutral-400">{booking.visits.filter((visit: any) => visit.status === 'COMPLETED').length} of {booking.visits.length} visits completed · {booking.visits.filter((visit: any) => visit.status === 'SCHEDULED' || visit.status === 'IN_PROGRESS').length} upcoming or active</p>
+                      <div className="space-y-2 pt-1">{booking.visits.map((visit: any) => <div key={visit.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md bg-neutral-50 dark:bg-neutral-900 px-3 py-2"><span>{new Date(visit.scheduledDate).toLocaleString()} · {visit.durationMinutes} min · {visit.status.replace('_', ' ')}</span><div className="flex gap-2">{booking.status === 'ACCEPTED' && visit.status === 'SCHEDULED' && <Button size="sm" onClick={() => startServiceMutation.mutate({ id: booking.id, visitId: visit.id })} disabled={startServiceMutation.isPending}>Start visit</Button>}{booking.status === 'IN_PROGRESS' && visit.status === 'SCHEDULED' && <Button size="sm" variant="outline" onClick={() => startServiceMutation.mutate({ id: booking.id, visitId: visit.id })} disabled={startServiceMutation.isPending}>Start visit</Button>}{booking.status === 'IN_PROGRESS' && visit.status === 'IN_PROGRESS' && <Button size="sm" onClick={() => completeServiceMutation.mutate({ id: booking.id, visitId: visit.id })} disabled={completeServiceMutation.isPending}>Complete visit</Button>}</div></div>)}</div>
+                    </>}
+                    <p><strong>Payment:</strong> {booking.paymentStatus || 'PENDING'}</p>
                   </div>
 
                   {booking.address && (
@@ -285,9 +303,9 @@ export default function MyBookingsPage() {
 
                     {booking.status === 'ACCEPTED' && !booking.replacementRequested && (
                       <>
-                        <Button size="sm" onClick={() => startServiceMutation.mutate(booking.id)} disabled={startServiceMutation.isPending}>
+                        {!(booking.visits?.length) && <Button size="sm" onClick={() => startServiceMutation.mutate({ id: booking.id })} disabled={startServiceMutation.isPending}>
                           Start Service
-                        </Button>
+                        </Button>}
                         <Button size="sm" variant="outline" onClick={() => markNoShowMutation.mutate(booking.id)} disabled={markNoShowMutation.isPending}>
                           Mark No-Show
                         </Button>
@@ -298,8 +316,8 @@ export default function MyBookingsPage() {
                       </>
                     )}
 
-                    {booking.status === 'IN_PROGRESS' && (
-                      <Button size="sm" onClick={() => completeServiceMutation.mutate(booking.id)} disabled={completeServiceMutation.isPending}>
+                    {booking.status === 'IN_PROGRESS' && !(booking.visits?.length) && (
+                      <Button size="sm" onClick={() => completeServiceMutation.mutate({ id: booking.id })} disabled={completeServiceMutation.isPending}>
                         Complete Service
                       </Button>
                     )}

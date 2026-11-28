@@ -21,6 +21,7 @@ import type {
   CrmRequirementsResponse,
   CrmRequirementPipeline,
   CrmRequirementListItem,
+  CreateBookingRequest,
 } from '../types';
 import type { AdminPartnerProfile, AdminPartnerVerificationDetails } from '../types/partner';
 
@@ -281,17 +282,7 @@ export const workerService = {
 
 
 export const bookingService = {
-  create: async (data: {
-    workerId: string;
-    bookingType: string;
-    subCategoryId: string;
-    address: string;
-    city: string;
-    scheduledDate: string;
-    durationMinutes: number;
-    servicePrice: number;
-    notes?: string;
-  }) => {
+  create: async (data: CreateBookingRequest) => {
     const response = await api.post('/bookings', data);
     return response.data;
   },
@@ -299,8 +290,8 @@ export const bookingService = {
   getWorkerBookings: async () => { const r = await api.get('/bookings/worker/my');  return r.data.data; },
   acceptBooking:    async (id: string) => { const r = await api.patch(`/bookings/${id}/accept`);            return r.data; },
   rejectBooking:    async (id: string) => { const r = await api.patch(`/bookings/${id}/reject`);            return r.data; },
-  startService:     async (id: string) => { const r = await api.patch(`/bookings/${id}/customer-start`);    return r.data; },
-  completeService:  async (id: string) => { const r = await api.patch(`/bookings/${id}/customer-complete`); return r.data; },
+  startService:     async (id: string, visitId?: string) => { const r = await api.patch(`/bookings/${id}/customer-start`, visitId ? { visitId } : {}); return r.data; },
+  completeService:  async (id: string, visitId?: string) => { const r = await api.patch(`/bookings/${id}/customer-complete`, visitId ? { visitId } : {}); return r.data; },
   cancelBooking:    async (id: string, reason: string) => { const r = await api.patch(`/bookings/${id}/cancel`, { reason }); return r.data; },
   cancelWorkerBooking: async (id: string, reason: string) => { const r = await api.patch(`/bookings/worker/${id}/cancel`, { reason }); return r.data; },
   markNoShow:       async (id: string) => { const r = await api.patch(`/bookings/${id}/no-show`);           return r.data; },

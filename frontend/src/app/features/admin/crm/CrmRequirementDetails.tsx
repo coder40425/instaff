@@ -734,6 +734,10 @@ export default function CrmRequirementDetails() {
                     'Requirement'}
                 </h1>
 
+                {requirement.businessModel === 'BULK_MANPOWER' && (
+                  <Badge variant="outline">Bulk Manpower</Badge>
+                )}
+
                 <RequirementStatusBadge
                   status={
                     requirement.status

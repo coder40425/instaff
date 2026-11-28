@@ -11,6 +11,14 @@ import BookingCancellationDetails from '../../components/BookingCancellationDeta
 import { bookingService, profileService } from '../../services/api';
 import { Calendar, MapPin, DollarSign, Star, Wallet, CheckCircle, QrCode } from 'lucide-react';
 
+const serviceFormatLabel = (format: unknown) => {
+  const labels: Record<string, string> = {
+    ONE_TIME: 'One-Time', HOURLY: 'Hourly', SESSION: 'Session', DAILY: 'Daily',
+    MULTIPLE_VISITS: 'Multiple Visits', WEEKLY: 'Weekly', MONTHLY: 'Monthly',
+  };
+  return typeof format === 'string' ? labels[format] || labels.ONE_TIME : labels.ONE_TIME;
+};
+
 const StarDisplay = ({ rating }: { rating: number }) => (
   <div className="flex gap-0.5">
     {[1, 2, 3, 4, 5].map((s) => (
@@ -147,7 +155,7 @@ export default function WorkerBookings() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-neutral-500" />
-                      <span>{new Date(booking.createdAt).toLocaleDateString()}</span>
+                      <span>{new Date(booking.scheduledDate).toLocaleString()}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-neutral-500" />
@@ -155,8 +163,18 @@ export default function WorkerBookings() {
                     </div>
                     <div className="flex items-center gap-2">
                       <DollarSign className="w-4 h-4 text-neutral-500" />
-                      <span>₹{booking.servicePrice ?? '—'}</span>
+                      <span>₹{booking.servicePrice ?? '—'} total</span>
                     </div>
+                  </div>
+
+                  <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3 space-y-2 text-sm">
+                    <p><strong>Format:</strong> {serviceFormatLabel(booking.serviceFormat)}</p>
+                    <p><strong>First scheduled service:</strong> {new Date(booking.scheduledDate).toLocaleString()} · {booking.durationMinutes} min</p>
+                    {booking.visits?.length > 0 && <>
+                      <p className="text-neutral-600 dark:text-neutral-400">{booking.visits.filter((visit: any) => visit.status === 'COMPLETED').length} of {booking.visits.length} visits completed · {booking.visits.filter((visit: any) => visit.status === 'SCHEDULED' || visit.status === 'IN_PROGRESS').length} upcoming or active</p>
+                      <div className="space-y-1">{booking.visits.map((visit: any) => <div key={visit.id} className="flex flex-wrap justify-between gap-2 rounded-md bg-neutral-50 dark:bg-neutral-900 px-3 py-2"><span>{new Date(visit.scheduledDate).toLocaleString()} · {visit.durationMinutes} min</span><Badge variant="secondary">{visit.status.replace('_', ' ')}</Badge></div>)}</div>
+                    </>}
+                    <p><strong>Payment status:</strong> {booking.paymentStatus || 'PENDING'}</p>
                   </div>
 
                   {booking.address && (
@@ -228,7 +246,7 @@ export default function WorkerBookings() {
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm font-medium">
                         <CheckCircle className="w-4 h-4" />
-                        Payment confirmed — ₹{booking.servicePrice} added to your wallet
+                        Payment confirmed — ₹{booking.workerPayout || booking.servicePrice} added to your wallet
                       </div>
                       {booking.review ? (
                         <div className="p-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg space-y-1">

@@ -190,6 +190,7 @@ const crmCandidateSelect = {
 
 const crmRequirementDetailSelect = {
   id: true,
+  businessModel: true,
 
   createdById: true,
 
@@ -615,6 +616,7 @@ export const getRecentCrmRequirements =
     return prisma.requirement.findMany({
       select: {
         id: true,
+        businessModel: true,
 
         city: true,
         state: true,
@@ -751,6 +753,7 @@ export const getCrmRequirements = async (
 
       select: {
         id: true,
+        businessModel: true,
 
         city: true,
         state: true,

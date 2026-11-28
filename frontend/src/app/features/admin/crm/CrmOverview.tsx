@@ -392,6 +392,9 @@ export default function CrmOverview() {
                             <span className="truncate text-xs text-neutral-500 dark:text-neutral-400">
                               {req.category?.name}
                             </span>
+                            {req.businessModel === 'BULK_MANPOWER' && (
+                              <Badge variant="outline">Bulk Manpower</Badge>
+                            )}
                           </span>
                           <span className="mt-0.5 block truncate text-xs text-neutral-500 dark:text-neutral-400">
                             {[shortId(req.id), req.city, `Joining ${formatDate(req.joiningDate)}`]

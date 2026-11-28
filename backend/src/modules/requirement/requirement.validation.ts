@@ -44,7 +44,7 @@ const shiftTimingEnum = z.enum([
 
 // ── Create ────────────────────────────────────────────────────────────────────
 
-export const createRequirementSchema = z.object({
+const requirementFieldsSchema = z.object({
   businessModel: businessModelEnum.default("REGULAR_EMPLOYMENT"),
 
   categoryId: z
@@ -108,7 +108,7 @@ export const createRequirementSchema = z.object({
     .number()
     .int()
     .min(0)
-    .default(10),
+    .optional(),
 
   preferredWorkerProfileId: z
     .string()
@@ -116,10 +116,46 @@ export const createRequirementSchema = z.object({
     .optional(),
 });
 
+const BULK_EMPLOYMENT_TYPES = new Set(["PERMANENT", "CONTRACT", "TEMPORARY"]);
+
+export const createRequirementSchema = requirementFieldsSchema.superRefine((requirement, ctx) => {
+  if (requirement.businessModel !== "BULK_MANPOWER") return;
+
+  if (requirement.requiredWorkerCount <= 1) {
+    ctx.addIssue({ code: "custom", path: ["requiredWorkerCount"], message: "Bulk Manpower requires at least two workers" });
+  }
+  if (requirement.assignmentMode !== "BULK_WORKFORCE") {
+    ctx.addIssue({ code: "custom", path: ["assignmentMode"], message: "Bulk Manpower must use the bulk workforce assignment pool" });
+  }
+  if (requirement.employmentTypes.length !== 1 || !BULK_EMPLOYMENT_TYPES.has(requirement.employmentTypes[0])) {
+    ctx.addIssue({ code: "custom", path: ["employmentTypes"], message: "Choose one arrangement: Bulk Permanent, Bulk Contract, or Bulk Temporary" });
+  }
+  if (!requirement.shiftTiming) {
+    ctx.addIssue({ code: "custom", path: ["shiftTiming"], message: "Choose the common shift for all workers" });
+  }
+  if (requirement.city.trim().length < 2) {
+    ctx.addIssue({ code: "custom", path: ["city"], message: "Enter a valid work city" });
+  }
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(requirement.joiningDate);
+  if (!dateMatch) {
+    ctx.addIssue({ code: "custom", path: ["joiningDate"], message: "Enter a valid joining date" });
+  } else {
+    const [, year, month, day] = dateMatch;
+    const date = new Date(0);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
+    if (date.toISOString().slice(0, 10) !== requirement.joiningDate) {
+      ctx.addIssue({ code: "custom", path: ["joiningDate"], message: "Enter a valid joining date" });
+    }
+  }
+  if (requirement.preferredWorkerProfileId) {
+    ctx.addIssue({ code: "custom", path: ["preferredWorkerProfileId"], message: "Bulk Manpower uses the shared matching pool, not a preferred single worker" });
+  }
+});
+
 // ── Update ────────────────────────────────────────────────────────────────────
 
-export const updateRequirementSchema =
-  createRequirementSchema.partial();
+export const updateRequirementSchema = requirementFieldsSchema.partial();
 
 export type CreateRequirementInput =
   z.infer<typeof createRequirementSchema>;

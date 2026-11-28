@@ -25,6 +25,7 @@ import {
   Award,
   Navigation,
   ClipboardList,
+  CalendarClock,
 } from 'lucide-react';
 
 // ── Small helper components ───────────────────────────────────────────────────
@@ -242,14 +243,25 @@ export default function WorkerDetailsPage() {
   </div>
 </div>
 
-                <Button
-                  size="lg"
-                  className="w-full sm:w-auto mt-4 gap-2"
-                  onClick={() => navigate('/customer/requirements/new', { state: { worker } })}
-                >
-                  <ClipboardList className="w-4 h-4" />
-                  Create Requirement
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                  <Button
+                    size="lg"
+                    className="w-full sm:w-auto gap-2"
+                    onClick={() => navigate('/booking/create', { state: { worker } })}
+                  >
+                    <CalendarClock className="w-4 h-4" />
+                    Book This Worker
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="w-full sm:w-auto gap-2"
+                    onClick={() => navigate('/customer/requirements/new', { state: { worker } })}
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                    Create Requirement
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>

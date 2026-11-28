@@ -408,6 +408,9 @@ export default function CrmRequirements() {
                             >
                               <td className="px-4 py-3 lg:px-6">
                                 <p className="font-medium">{shortId(req.id)}</p>
+                                {req.businessModel === 'BULK_MANPOWER' && (
+                                  <Badge variant="outline" className="mt-1">Bulk Manpower</Badge>
+                                )}
                                 <p className="text-xs text-neutral-500 dark:text-neutral-400">
                                   {formatDate(req.createdAt)}
                                 </p>
@@ -496,6 +499,9 @@ export default function CrmRequirements() {
                                   {shortId(req.id)}
                                   {req.category?.name ? ` · ${req.category.name}` : ''}
                                 </p>
+                                {req.businessModel === 'BULK_MANPOWER' && (
+                                  <Badge variant="outline" className="mt-1">Bulk Manpower</Badge>
+                                )}
                               </div>
                               <StatusBadge status={req.status} />
                             </div>

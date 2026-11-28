@@ -36,6 +36,12 @@ const EMPLOYMENT_TYPES: { value: EmploymentType; label: string }[] = [
   { value: 'TEMPORARY', label: 'Temporary' },
 ];
 
+const BULK_EMPLOYMENT_TYPES: { value: EmploymentType; label: string }[] = [
+  { value: 'PERMANENT', label: 'Bulk Permanent' },
+  { value: 'CONTRACT', label: 'Bulk Contract' },
+  { value: 'TEMPORARY', label: 'Bulk Temporary' },
+];
+
 const COUNTRY_OPTIONS = [
   'United States', 'United Kingdom', 'Canada', 'Australia',
   'Germany', 'United Arab Emirates', 'Singapore', 'Japan', 'Other',
@@ -51,6 +57,7 @@ interface RequirementForm {
   salaryBudget?: number;
   minExperience?: number;
   joiningDate: string;
+  requiredWorkerCount?: number;
   employmentTypes?: EmploymentType[];
   workMode?: WorkMode;
   workGeography?: WorkGeography;
@@ -74,17 +81,21 @@ export default function CreateRequirementPage() {
   const isPartner = user?.role === 'PARTNER';
   const PageLayout = isPartner ? PartnerLayout : CustomerLayout;
   const [selectedModel, setSelectedModel] = useState<BusinessModel | null>(null);
+  const [isReviewingBulk, setIsReviewingBulk] = useState(false);
+  const [bulkReviewPayload, setBulkReviewPayload] = useState<CreateRequirementPayload | null>(null);
+  const isBulkManpower = selectedModel === 'BULK_MANPOWER';
   // Optional: customer may arrive here from a worker's profile with a
   // preferred worker already chosen (mirrors CreateBookingPage's pattern).
   const preferredWorker: Worker | undefined = location.state?.worker;
 
-  const { register, handleSubmit, control, watch, setValue, formState: { errors } } =
+  const { register, handleSubmit, control, watch, setValue, setError, clearErrors, reset, formState: { errors } } =
     useForm<RequirementForm>({
       defaultValues: {
         joiningDate: new Date().toISOString().slice(0, 10),
         employmentTypes: [],
         preferredCountries: [],
         backupPoolSize: 2,
+        requiredWorkerCount: 1,
       },
     });
 
@@ -116,8 +127,17 @@ export default function CreateRequirementPage() {
   });
 
   const onSubmit = (data: RequirementForm) => {
+    if (isBulkManpower && (
+      !data.employmentTypes ||
+      data.employmentTypes.length !== 1 ||
+      !BULK_EMPLOYMENT_TYPES.some((type) => type.value === data.employmentTypes?.[0])
+    )) {
+      setError('employmentTypes', { type: 'validate', message: 'Choose one bulk employment arrangement' });
+      return;
+    }
+
     const payload: CreateRequirementPayload = {
-      businessModel: 'REGULAR_EMPLOYMENT',
+      businessModel: isBulkManpower ? 'BULK_MANPOWER' : 'REGULAR_EMPLOYMENT',
       categoryId: data.categoryId,
       subCategoryId: data.subCategoryId,
       city: data.city,
@@ -127,19 +147,24 @@ export default function CreateRequirementPage() {
       salaryBudget: data.salaryBudget ? Number(data.salaryBudget) : undefined,
       minExperience: data.minExperience ? Number(data.minExperience) : undefined,
       joiningDate: data.joiningDate,
-      requiredWorkerCount: 1,
+      requiredWorkerCount: isBulkManpower ? Number(data.requiredWorkerCount) : 1,
       employmentTypes: data.employmentTypes && data.employmentTypes.length > 0 ? data.employmentTypes : undefined,
-      workMode: data.workMode || undefined,
-      workGeography: data.workGeography || undefined,
-      preferredCountries: data.preferredCountries && data.preferredCountries.length > 0 ? data.preferredCountries : undefined,
-      assignmentMode: preferredWorker ? 'PREFERRED_SINGLE' : 'SINGLE_WITH_BACKUP',
-      backupPoolSize: preferredWorker ? undefined : Number(data.backupPoolSize),
-      preferredWorkerProfileId: preferredWorker?.id,
+      workMode: isBulkManpower ? undefined : data.workMode || undefined,
+      workGeography: isBulkManpower ? undefined : data.workGeography || undefined,
+      preferredCountries: isBulkManpower ? undefined : data.preferredCountries && data.preferredCountries.length > 0 ? data.preferredCountries : undefined,
+      assignmentMode: isBulkManpower ? 'BULK_WORKFORCE' : preferredWorker ? 'PREFERRED_SINGLE' : 'SINGLE_WITH_BACKUP',
+      backupPoolSize: isBulkManpower ? Number(data.backupPoolSize ?? 0) : preferredWorker ? undefined : Number(data.backupPoolSize),
+      preferredWorkerProfileId: isBulkManpower ? undefined : preferredWorker?.id,
     };
+    if (isBulkManpower) {
+      setBulkReviewPayload(payload);
+      setIsReviewingBulk(true);
+      return;
+    }
     createMutation.mutate(payload);
   };
 
-  if (selectedModel !== 'REGULAR_EMPLOYMENT') {
+  if (!selectedModel) {
     const choices: {
       model: BusinessModel;
       title: string;
@@ -158,15 +183,15 @@ export default function CreateRequirementPage() {
         model: 'GIG_WORK',
         title: 'Gig Work',
         subtitle: 'Book a Service',
-        description: 'Arrange a one-time service booking.',
-        available: false,
+        description: 'Book a worker for a one-time or recurring service.',
+        available: !isPartner,
       },
       {
         model: 'BULK_MANPOWER',
         title: 'Bulk Manpower',
         subtitle: 'Hire a Team',
         description: 'Request multiple workers for a team or workforce need.',
-        available: false,
+        available: true,
       },
     ];
 
@@ -196,7 +221,26 @@ export default function CreateRequirementPage() {
                 key={choice.model}
                 type="button"
                 disabled={!choice.available}
-                onClick={() => setSelectedModel(choice.model)}
+                onClick={() => {
+                  if (choice.model === 'GIG_WORK') {
+                    if (preferredWorker) {
+                      navigate('/booking/create', { state: { worker: preferredWorker } });
+                    } else {
+                      navigate('/customer/home');
+                    }
+                    return;
+                  }
+                  if (choice.model === 'BULK_MANPOWER') {
+                    setValue('requiredWorkerCount', 2);
+                    setValue('backupPoolSize', 0);
+                    setValue('employmentTypes', []);
+                    setValue('workMode', undefined);
+                    setValue('workGeography', undefined);
+                    setIsReviewingBulk(false);
+                    setBulkReviewPayload(null);
+                  }
+                  setSelectedModel(choice.model);
+                }}
                 className={`rounded-xl border p-5 text-left transition-colors ${choice.available
                   ? 'border-neutral-300 hover:border-neutral-900 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:border-neutral-300 dark:hover:bg-neutral-900'
                   : 'cursor-not-allowed border-neutral-200 bg-neutral-50/70 text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/40 dark:text-neutral-500'}`}
@@ -217,19 +261,33 @@ export default function CreateRequirementPage() {
   return (
     <PageLayout>
       <div className="max-w-2xl mx-auto space-y-6 px-1 sm:px-0">
+        {isBulkManpower && (
+          <Button type="button" variant="ghost" className="-ml-2" onClick={() => {
+            setSelectedModel(null);
+            setIsReviewingBulk(false);
+            setBulkReviewPayload(null);
+            reset();
+          }}>
+            ← Back to business models
+          </Button>
+        )}
         <div className="flex items-start gap-3">
           <div className="hidden sm:flex w-11 h-11 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 items-center justify-center flex-shrink-0">
             <ClipboardList className="w-5 h-5 text-neutral-700 dark:text-neutral-300" />
           </div>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Regular Employment – Staff Hiring</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
+              {isBulkManpower ? 'Bulk Manpower – Team Hiring' : 'Regular Employment – Staff Hiring'}
+            </h1>
             <p className="text-neutral-600 dark:text-neutral-400 mt-1 text-sm sm:text-base">
-              Tell us what kind of worker(s) you need — we'll match and assign candidates.
+              {isBulkManpower
+                ? 'Request one group of workers for the same role, work location, shift and employment arrangement.'
+                : "Tell us what kind of worker(s) you need — we'll match and assign candidates."}
             </p>
           </div>
         </div>
 
-        {preferredWorker && (
+        {preferredWorker && !isBulkManpower && (
           <Card className="border-neutral-200 dark:border-neutral-800">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
@@ -244,7 +302,8 @@ export default function CreateRequirementPage() {
           </Card>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <fieldset disabled={isReviewingBulk} className="m-0 min-w-0 space-y-6 border-0 p-0">
           <Section title="Role">
             <div className="space-y-2">
               <Label>Category <span className="text-red-500">*</span></Label>
@@ -290,13 +349,17 @@ export default function CreateRequirementPage() {
             </div>
           </Section>
 
-          <Section title="Location">
+          <Section title={isBulkManpower ? 'Common Work Location' : 'Location'}>
+            {isBulkManpower && <p className="text-sm text-neutral-600 dark:text-neutral-400">All requested workers share this work location.</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="city" className="flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-neutral-500" /> City <span className="text-red-500">*</span>
                 </Label>
-                <Input id="city" placeholder="Enter city" {...register('city', { required: 'City is required' })} />
+                <Input id="city" placeholder="Enter city" {...register('city', {
+                  required: 'City is required',
+                  ...(isBulkManpower ? { validate: (value) => value.trim().length >= 2 || 'Enter a valid work city' } : {}),
+                })} />
                 {errors.city && <p className="text-sm text-red-500">{errors.city.message}</p>}
               </div>
               <div className="space-y-2">
@@ -310,8 +373,26 @@ export default function CreateRequirementPage() {
             </div>
           </Section>
 
-          <Section title="Role Details">
+          <Section title={isBulkManpower ? 'Bulk Work Details' : 'Role Details'}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {isBulkManpower && (
+                <div className="space-y-2">
+                  <Label htmlFor="requiredWorkerCount">Total workers required <span className="text-red-500">*</span></Label>
+                  <Input
+                    id="requiredWorkerCount"
+                    type="number"
+                    min={2}
+                    step={1}
+                    {...register('requiredWorkerCount', {
+                      valueAsNumber: true,
+                      required: 'Enter the total number of workers',
+                      min: { value: 2, message: 'Bulk Manpower requires at least two workers' },
+                      validate: (value) => Number.isInteger(value) || 'Enter a whole number of workers',
+                    })}
+                  />
+                  {errors.requiredWorkerCount && <p className="text-sm text-red-500">{errors.requiredWorkerCount.message}</p>}
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="joiningDate" className="flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-neutral-500" /> Joining Date <span className="text-red-500">*</span>
@@ -320,10 +401,11 @@ export default function CreateRequirementPage() {
                 {errors.joiningDate && <p className="text-sm text-red-500">{errors.joiningDate.message}</p>}
               </div>
               <div className="space-y-2">
-                <Label>Shift Timing</Label>
+                <Label>{isBulkManpower ? 'Common shift for all workers' : 'Shift Timing'}{isBulkManpower && <span className="text-red-500"> *</span>}</Label>
                 <Controller
                   name="shiftTiming"
                   control={control}
+                  rules={isBulkManpower ? { required: 'Choose the common shift' } : undefined}
                   render={({ field }) => (
                     <Select
                       onValueChange={field.onChange}
@@ -342,18 +424,29 @@ export default function CreateRequirementPage() {
                     </Select>
                   )}
                 />
+                {errors.shiftTiming && <p className="text-sm text-red-500">{errors.shiftTiming.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="salaryBudget" className="flex items-center gap-1.5">
-                  <IndianRupee className="w-3.5 h-3.5 text-neutral-500" /> Salary Budget (₹/month)
+                  <IndianRupee className="w-3.5 h-3.5 text-neutral-500" /> {isBulkManpower ? 'Salary/budget (optional)' : 'Salary Budget (₹/month)'}
                 </Label>
-                <Input id="salaryBudget" type="number" placeholder="e.g. 15000" {...register('salaryBudget', { valueAsNumber: true })} />
+                <Input id="salaryBudget" type="number" min={isBulkManpower ? 0.01 : undefined} placeholder="e.g. 15000" {...register('salaryBudget', {
+                  valueAsNumber: true,
+                  ...(isBulkManpower ? { min: { value: 0.01, message: 'Budget must be positive when provided' } } : {}),
+                })} />
+                {errors.salaryBudget && <p className="text-sm text-red-500">{errors.salaryBudget.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="minExperience">Minimum Experience (years)</Label>
-                <Input id="minExperience" type="number" placeholder="e.g. 2" {...register('minExperience', { valueAsNumber: true })} />
+                <Input id="minExperience" type="number" min={isBulkManpower ? 0 : undefined} step={isBulkManpower ? 'any' : undefined} placeholder="e.g. 2" {...register('minExperience', isBulkManpower
+                  ? {
+                      setValueAs: (value) => value === '' ? undefined : Number(value),
+                      min: { value: 0, message: 'Minimum experience cannot be negative' },
+                    }
+                  : { valueAsNumber: true })} />
+                {errors.minExperience && <p className="text-sm text-red-500">{errors.minExperience.message}</p>}
               </div>
-              <div className="space-y-2">
+              {!isBulkManpower && <div className="space-y-2">
                 <Label>Work Mode</Label>
                 <Controller
                   name="workMode"
@@ -368,8 +461,8 @@ export default function CreateRequirementPage() {
                     </Select>
                   )}
                 />
-              </div>
-              <div className="space-y-2">
+              </div>}
+              {!isBulkManpower && <div className="space-y-2">
                 <Label>Work Geography</Label>
                 <Controller
                   name="workGeography"
@@ -390,10 +483,10 @@ export default function CreateRequirementPage() {
                     </Select>
                   )}
                 />
-              </div>
+              </div>}
             </div>
 
-            {workGeography === 'INTERNATIONAL' && (
+            {!isBulkManpower && workGeography === 'INTERNATIONAL' && (
               <div className="space-y-2">
                 <Label>Preferred Countries</Label>
                 <div className="flex flex-wrap gap-2">
@@ -424,19 +517,23 @@ export default function CreateRequirementPage() {
             )}
 
             <div className="space-y-2">
-              <Label>Employment Types</Label>
+              <Label>{isBulkManpower ? 'Common employment arrangement' : 'Employment Types'}{isBulkManpower && <span className="text-red-500"> *</span>}</Label>
+              {isBulkManpower && <p className="text-sm text-neutral-500">Choose one arrangement for every worker in this group.</p>}
               <div className="flex flex-wrap gap-2">
-                {EMPLOYMENT_TYPES.map((type) => {
+                {(isBulkManpower ? BULK_EMPLOYMENT_TYPES : EMPLOYMENT_TYPES).map((type) => {
                   const selected = selectedEmploymentTypes.includes(type.value);
                   return (
                     <button
                       key={type.value}
                       type="button"
                       onClick={() => {
-                        const updated = selected
-                          ? selectedEmploymentTypes.filter((t) => t !== type.value)
-                          : [...selectedEmploymentTypes, type.value];
+                        const updated = isBulkManpower
+                          ? selected ? [] : [type.value]
+                          : selected
+                            ? selectedEmploymentTypes.filter((t) => t !== type.value)
+                            : [...selectedEmploymentTypes, type.value];
                         setValue('employmentTypes', updated);
+                        clearErrors('employmentTypes');
                       }}
                       className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
                         selected
@@ -449,28 +546,77 @@ export default function CreateRequirementPage() {
                   );
                 })}
               </div>
+              {errors.employmentTypes && <p className="text-sm text-red-500">{errors.employmentTypes.message}</p>}
             </div>
           </Section>
 
-          <Section title="Candidate matching">
+          <Section title={isBulkManpower ? 'Matching and backup pool' : 'Candidate matching'}>
             <p className="text-sm text-neutral-600 dark:text-neutral-400">
-              This requirement is for one staff member. We’ll match a primary candidate and keep a backup pool available.
+              {isBulkManpower
+                ? 'We will build a pool for the requested workers plus the backup count. Each worker must accept an offer before they are assigned.'
+                : 'This requirement is for one staff member. We’ll match a primary candidate and keep a backup pool available.'}
             </p>
-            {!preferredWorker && (
+            {(isBulkManpower || !preferredWorker) && (
               <div className="space-y-2">
-                <Label htmlFor="backupPoolSize">Backup Pool Size</Label>
-                <Input id="backupPoolSize" type="number" min={0} {...register('backupPoolSize', { valueAsNumber: true })} />
+                <Label htmlFor="backupPoolSize">{isBulkManpower ? 'Backup worker count (optional)' : 'Backup Pool Size'}</Label>
+                <Input
+                  id="backupPoolSize"
+                  type="number"
+                  min={0}
+                  step={1}
+                  {...register('backupPoolSize', isBulkManpower
+                    ? {
+                        setValueAs: (value) => value === '' ? 0 : Number(value),
+                        min: { value: 0, message: 'Backup count cannot be negative' },
+                        validate: (value) => Number.isInteger(value) || 'Enter a whole number of backups',
+                      }
+                    : { valueAsNumber: true })}
+                />
+                {errors.backupPoolSize && <p className="text-sm text-red-500">{errors.backupPoolSize.message}</p>}
               </div>
             )}
           </Section>
+
+          </fieldset>
+
+          {isBulkManpower && isReviewingBulk && bulkReviewPayload && (
+            <Card className="border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900">
+              <CardHeader className="pb-2"><CardTitle className="text-base">Review Bulk Manpower requirement</CardTitle></CardHeader>
+              <CardContent className="space-y-1 text-sm">
+                <p><strong>Role:</strong> {selectedCategory?.name} — {subCategoryOptions.find((item) => item.id === bulkReviewPayload.subCategoryId)?.name}</p>
+                <p><strong>Total workers requested:</strong> {bulkReviewPayload.requiredWorkerCount}</p>
+                <p><strong>Backup pool size:</strong> {bulkReviewPayload.backupPoolSize ?? 0}</p>
+                <p><strong>Employment arrangement:</strong> {BULK_EMPLOYMENT_TYPES.find((type) => type.value === bulkReviewPayload.employmentTypes?.[0])?.label}</p>
+                <p><strong>Common location:</strong> {bulkReviewPayload.address ? `${bulkReviewPayload.address}, ` : ''}{bulkReviewPayload.city}{bulkReviewPayload.state ? `, ${bulkReviewPayload.state}` : ''}</p>
+                <p><strong>Common shift:</strong> {bulkReviewPayload.shiftTiming?.replace(/_/g, ' ')}</p>
+                <p><strong>Joining date:</strong> {bulkReviewPayload.joiningDate}</p>
+                <p><strong>Salary/budget:</strong> {bulkReviewPayload.salaryBudget ? `₹${bulkReviewPayload.salaryBudget.toLocaleString('en-IN')}` : 'Not specified'}</p>
+                <p><strong>Minimum experience:</strong> {bulkReviewPayload.minExperience ?? 0} years</p>
+              </CardContent>
+            </Card>
+          )}
 
           <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => navigate(-1)}>
               Cancel
             </Button>
-            <Button type="submit" className="flex-1" disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating…' : 'Create Requirement'}
-            </Button>
+            {isBulkManpower && isReviewingBulk ? (
+              <>
+                <Button type="button" variant="outline" className="flex-1" onClick={() => {
+                  setIsReviewingBulk(false);
+                  setBulkReviewPayload(null);
+                }}>Edit details</Button>
+                <Button type="button" className="flex-1" disabled={createMutation.isPending} onClick={() => {
+                  if (bulkReviewPayload) createMutation.mutate(bulkReviewPayload);
+                }}>
+                  {createMutation.isPending ? 'Creating…' : 'Confirm and create requirement'}
+                </Button>
+              </>
+            ) : (
+              <Button type="submit" className="flex-1" disabled={createMutation.isPending}>
+                {isBulkManpower ? 'Review requirement' : createMutation.isPending ? 'Creating…' : 'Create Requirement'}
+              </Button>
+            )}
           </div>
         </form>
       </div>

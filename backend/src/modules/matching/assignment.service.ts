@@ -92,6 +92,10 @@ export const buildAssignmentPool = async (
 
   const currentlyEligibleWorkers = await findMatchingWorkers(requirement);
   if (currentlyEligibleWorkers.length === 0) {
+    if (requirement.assignmentMode === "BULK_WORKFORCE") {
+      const requiredPoolSize = requirement.requiredWorkerCount + requirement.backupPoolSize;
+      throw new Error(`Insufficient candidates for this bulk requirement: 0 of ${requiredPoolSize} requested workers and backups are currently eligible.`);
+    }
     throw new Error(await getRequirementMatchingExclusionSummary(requirement));
   }
 
@@ -124,9 +128,20 @@ export const buildAssignmentPool = async (
     });
 
   if (candidates.length === 0) {
+    if (requirement.assignmentMode === "BULK_WORKFORCE") {
+      const requiredPoolSize = requirement.requiredWorkerCount + requirement.backupPoolSize;
+      throw new Error(`The bulk assignment pool needs ${requiredPoolSize} eligible candidates (${requirement.requiredWorkerCount} workers plus ${requirement.backupPoolSize} backups), but none are in the recommendation pool. Generate matches and try again.`);
+    }
     throw new Error(
       "Workers currently meet the matching criteria, but none has an unassigned candidate in the recommendation pool. Run matching again to refresh candidates."
     );
+  }
+
+  if (requirement.assignmentMode === "BULK_WORKFORCE") {
+    const requiredPoolSize = requirement.requiredWorkerCount + requirement.backupPoolSize;
+    if (candidates.length < requiredPoolSize) {
+      throw new Error(`Insufficient candidates for this bulk requirement: ${candidates.length} of ${requiredPoolSize} requested workers and backups are available. Generate more matches or reduce the worker/backup counts before building the pool.`);
+    }
   }
 
   // Preferred single:
@@ -375,6 +390,14 @@ export const assignRequirementWorker = async (
     throw new Error("Worker already has a pending offer");
   }
 
+  if (
+    requirement.assignmentMode === "BULK_WORKFORCE" &&
+    candidate.status !== "PRIMARY" &&
+    candidate.status !== "BACKUP"
+  ) {
+    throw new Error("Build the complete bulk assignment pool before sending offers");
+  }
+
   if (!ASSIGNABLE_CANDIDATE_STATUSES.includes(candidate.status as never)) {
     throw new Error(
       "Worker is not eligible for assignment"
@@ -444,6 +467,13 @@ export const assignRequirementWorker = async (
       !ASSIGNABLE_CANDIDATE_STATUSES.includes(freshCandidate.status as never)
     ) {
       throw new Error("Worker is not eligible for assignment");
+    }
+    if (
+      requirement.assignmentMode === "BULK_WORKFORCE" &&
+      freshCandidate.status !== "PRIMARY" &&
+      freshCandidate.status !== "BACKUP"
+    ) {
+      throw new Error("Build the complete bulk assignment pool before sending offers");
     }
 
     // Recheck and lock the candidate worker inside the same transaction so

@@ -50,10 +50,10 @@ export const workerBookings = async (req: AuthRequest, res: Response) => {
 
 export const bookingDetails = async (req: AuthRequest, res: Response) => {
   try {
-    const booking = await getBookingById(String(req.params.id));
+    const booking = await getBookingById(String(req.params.id), req.user!.userId, req.user!.role);
     res.json({ success: true, data: booking });
   } catch (error: any) {
-    res.status(404).json({ success: false, message: error.message });
+    res.status(error.statusCode || (error.message === "Booking not found" ? 404 : 500)).json({ success: false, message: error.message });
   }
 };
 
@@ -77,7 +77,7 @@ export const rejectBookingHandler = async (req: AuthRequest, res: Response) => {
 
 export const customerStartBookingHandler = async (req: AuthRequest, res: Response) => {
   try {
-    const booking = await customerStartBooking(String(req.params.id), req.user!.userId);
+    const booking = await customerStartBooking(String(req.params.id), req.user!.userId, req.body?.visitId);
     res.json({ success: true, data: booking });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
@@ -86,7 +86,7 @@ export const customerStartBookingHandler = async (req: AuthRequest, res: Respons
 
 export const completeBookingHandler = async (req: AuthRequest, res: Response) => {
   try {
-    const booking = await completeBooking(String(req.params.id), req.user!.userId);
+    const booking = await completeBooking(String(req.params.id), req.user!.userId, req.body?.visitId);
     res.json({ success: true, data: booking });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
