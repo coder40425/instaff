@@ -104,6 +104,13 @@ function RequirementCard({
             <p className="break-words font-semibold">
               {requirement.category.name} · {requirement.subCategory.name}
             </p>
+            <Badge variant="outline" className="mt-1">
+              {requirement.businessModel === 'REGULAR_EMPLOYMENT'
+                ? 'Regular Employment – Staff Hiring'
+                : requirement.businessModel === 'BULK_MANPOWER'
+                  ? 'Bulk Manpower – Team Hiring'
+                  : 'Gig Work – Service Booking'}
+            </Badge>
             <p className="mt-1 flex items-center gap-1.5 text-sm text-neutral-500">
               <Building2 className="h-3.5 w-3.5 shrink-0" />
               <span className="break-words">{companyLabel(offer)}</span>
@@ -267,6 +274,13 @@ export default function WorkerRequirements() {
                     {selectedOffer.requirement.category.name} · {selectedOffer.requirement.subCategory.name}
                   </DialogTitle>
                 </DialogHeader>
+                <Badge variant="outline" className="w-fit">
+                  {selectedOffer.requirement.businessModel === 'REGULAR_EMPLOYMENT'
+                    ? 'Regular Employment – Staff Hiring'
+                    : selectedOffer.requirement.businessModel === 'BULK_MANPOWER'
+                      ? 'Bulk Manpower – Team Hiring'
+                      : 'Gig Work – Service Booking'}
+                </Badge>
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">

@@ -570,6 +570,7 @@ const requirementOfferSelect = {
   requirement: {
     select: {
       id: true,
+      businessModel: true,
       source: true,
       status: true,
       city: true,

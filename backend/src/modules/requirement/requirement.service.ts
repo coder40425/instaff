@@ -6,6 +6,18 @@ import {
   assertRequirementOwner,
   getRequirementActor,
 } from "./requirement.access";
+import type {
+  CreateRequirementInput,
+  UpdateRequirementInput,
+} from "./requirement.validation";
+
+const REGULAR_EMPLOYMENT_TYPES = new Set([
+  "PERMANENT",
+  "CONTRACT",
+  "TEMPORARY",
+  "FULL_TIME",
+  "PART_TIME",
+]);
 
 const requirementInclude = {
   category: true,
@@ -110,8 +122,24 @@ const validatePreferredWorker = async (
 
 export const createRequirement = async (
   userId: string,
-  data: any
+  data: CreateRequirementInput
 ) => {
+  if ((data.businessModel ?? "REGULAR_EMPLOYMENT") !== "REGULAR_EMPLOYMENT") {
+    throw new Error("Only Regular Employment requirements can be created right now");
+  }
+
+  if (data.requiredWorkerCount !== undefined && data.requiredWorkerCount !== 1) {
+    throw new Error("Regular Employment requirements must request one worker");
+  }
+
+  if (data.assignmentMode === "BULK_WORKFORCE") {
+    throw new Error("Regular Employment requirements cannot use bulk assignment");
+  }
+
+  if (data.employmentTypes.some((type) => !REGULAR_EMPLOYMENT_TYPES.has(type))) {
+    throw new Error("Choose a valid employment type for Regular Employment");
+  }
+
   const actor = await getRequirementActor(userId);
 
   const category = await prisma.category.findUnique({
@@ -160,6 +188,7 @@ export const createRequirement = async (
 
   return prisma.requirement.create({
     data: {
+      businessModel: "REGULAR_EMPLOYMENT",
       createdById: userId,
 
       categoryId: data.categoryId,
@@ -260,7 +289,7 @@ export const getRequirementById = async (
 export const updateRequirement = async (
   requirementId: string,
   userId: string,
-  data: any
+  data: UpdateRequirementInput
 ) => {
   const requirement =
     await prisma.requirement.findUnique({
@@ -274,6 +303,10 @@ export const updateRequirement = async (
   }
 
   const actor = await assertRequirementOwner(userId, requirement);
+
+  if (data.businessModel !== undefined && data.businessModel !== requirement.businessModel) {
+    throw new Error("A requirement's business model cannot be changed");
+  }
 
   // Requirements can only be edited while still being a draft.
   if (requirement.status !== "DRAFT") {
@@ -295,6 +328,21 @@ export const updateRequirement = async (
   const assignmentMode =
     data.assignmentMode ??
     requirement.assignmentMode;
+
+  const requiredWorkerCount =
+    data.requiredWorkerCount ?? requirement.requiredWorkerCount;
+
+  if (requirement.businessModel === "REGULAR_EMPLOYMENT") {
+    if (requiredWorkerCount !== 1) {
+      throw new Error("Regular Employment requirements must request one worker");
+    }
+    if (assignmentMode === "BULK_WORKFORCE") {
+      throw new Error("Regular Employment requirements cannot use bulk assignment");
+    }
+    if (data.employmentTypes?.some((type) => !REGULAR_EMPLOYMENT_TYPES.has(type))) {
+      throw new Error("Choose a valid employment type for Regular Employment");
+    }
+  }
 
   const preferredWorkerProfileId =
     data.preferredWorkerProfileId !== undefined

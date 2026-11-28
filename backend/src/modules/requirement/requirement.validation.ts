@@ -14,6 +14,12 @@ const employmentTypeEnum = z.enum([
   "INTERNSHIP",
 ]);
 
+const businessModelEnum = z.enum([
+  "REGULAR_EMPLOYMENT",
+  "GIG_WORK",
+  "BULK_MANPOWER",
+]);
+
 const workModeEnum = z.enum([
   "ON_SITE",
   "REMOTE",
@@ -39,6 +45,8 @@ const shiftTimingEnum = z.enum([
 // ── Create ────────────────────────────────────────────────────────────────────
 
 export const createRequirementSchema = z.object({
+  businessModel: businessModelEnum.default("REGULAR_EMPLOYMENT"),
+
   categoryId: z
     .string()
     .min(1, "Category is required"),

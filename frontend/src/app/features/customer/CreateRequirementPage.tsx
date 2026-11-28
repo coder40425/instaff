@@ -14,9 +14,9 @@ import { Textarea } from '../../components/ui/textarea';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../../components/ui/select';
-import { Badge } from '../../components/ui/badge';
 import { categoryService, requirementService } from '../../services/api';
 import type {
+  BusinessModel,
   Category,
   SubCategory,
   CreateRequirementPayload,
@@ -24,21 +24,16 @@ import type {
   WorkMode,
   WorkGeography,
   ShiftTiming,
-  AssignmentMode,
   Worker,
 } from '../../types';
-import { ClipboardList, MapPin, Calendar, Users, IndianRupee } from 'lucide-react';
+import { BriefcaseBusiness, ClipboardList, MapPin, Calendar, Users, IndianRupee } from 'lucide-react';
 
 const EMPLOYMENT_TYPES: { value: EmploymentType; label: string }[] = [
   { value: 'PERMANENT', label: 'Permanent' },
   { value: 'CONTRACT', label: 'Contract' },
-  { value: 'FREELANCE', label: 'Freelance' },
-  { value: 'PROJECT_BASED', label: 'Project Based' },
   { value: 'PART_TIME', label: 'Part-Time' },
   { value: 'FULL_TIME', label: 'Full-Time' },
   { value: 'TEMPORARY', label: 'Temporary' },
-  { value: 'ON_CALL', label: 'On-Call' },
-  { value: 'INTERNSHIP', label: 'Internship' },
 ];
 
 const COUNTRY_OPTIONS = [
@@ -56,12 +51,10 @@ interface RequirementForm {
   salaryBudget?: number;
   minExperience?: number;
   joiningDate: string;
-  requiredWorkerCount?: number;
   employmentTypes?: EmploymentType[];
   workMode?: WorkMode;
   workGeography?: WorkGeography;
   preferredCountries?: string[];
-  assignmentMode?: AssignmentMode;
   backupPoolSize?: number;
 }
 
@@ -80,6 +73,7 @@ export default function CreateRequirementPage() {
   const { user } = useAuth();
   const isPartner = user?.role === 'PARTNER';
   const PageLayout = isPartner ? PartnerLayout : CustomerLayout;
+  const [selectedModel, setSelectedModel] = useState<BusinessModel | null>(null);
   // Optional: customer may arrive here from a worker's profile with a
   // preferred worker already chosen (mirrors CreateBookingPage's pattern).
   const preferredWorker: Worker | undefined = location.state?.worker;
@@ -90,8 +84,6 @@ export default function CreateRequirementPage() {
         joiningDate: new Date().toISOString().slice(0, 10),
         employmentTypes: [],
         preferredCountries: [],
-        assignmentMode: preferredWorker ? 'PREFERRED_SINGLE' : 'SINGLE_WITH_BACKUP',
-        requiredWorkerCount: 1,
         backupPoolSize: 2,
       },
     });
@@ -103,11 +95,9 @@ export default function CreateRequirementPage() {
   const categories: Category[] = [...(categoriesData ?? [])].sort((a, b) => a.name.localeCompare(b.name));
 
   const categoryId = watch('categoryId');
-  const assignmentMode = watch('workGeography');
   const selectedEmploymentTypes = watch('employmentTypes') ?? [];
   const selectedCountries = watch('preferredCountries') ?? [];
   const workGeography = watch('workGeography');
-  const currentAssignmentMode = watch('assignmentMode');
 
   const selectedCategory = categories.find((c) => c.id === categoryId);
   const subCategoryOptions: SubCategory[] = [...(selectedCategory?.subCategories ?? [])].sort((a, b) =>
@@ -127,6 +117,7 @@ export default function CreateRequirementPage() {
 
   const onSubmit = (data: RequirementForm) => {
     const payload: CreateRequirementPayload = {
+      businessModel: 'REGULAR_EMPLOYMENT',
       categoryId: data.categoryId,
       subCategoryId: data.subCategoryId,
       city: data.city,
@@ -136,18 +127,92 @@ export default function CreateRequirementPage() {
       salaryBudget: data.salaryBudget ? Number(data.salaryBudget) : undefined,
       minExperience: data.minExperience ? Number(data.minExperience) : undefined,
       joiningDate: data.joiningDate,
-      requiredWorkerCount: data.requiredWorkerCount ? Number(data.requiredWorkerCount) : undefined,
+      requiredWorkerCount: 1,
       employmentTypes: data.employmentTypes && data.employmentTypes.length > 0 ? data.employmentTypes : undefined,
       workMode: data.workMode || undefined,
       workGeography: data.workGeography || undefined,
       preferredCountries: data.preferredCountries && data.preferredCountries.length > 0 ? data.preferredCountries : undefined,
-      assignmentMode: data.assignmentMode || undefined,
-      backupPoolSize: data.assignmentMode === 'SINGLE_WITH_BACKUP' ? Number(data.backupPoolSize) : undefined,
-      preferredWorkerProfileId:
-        data.assignmentMode === 'PREFERRED_SINGLE' ? preferredWorker?.id : undefined,
+      assignmentMode: preferredWorker ? 'PREFERRED_SINGLE' : 'SINGLE_WITH_BACKUP',
+      backupPoolSize: preferredWorker ? undefined : Number(data.backupPoolSize),
+      preferredWorkerProfileId: preferredWorker?.id,
     };
     createMutation.mutate(payload);
   };
+
+  if (selectedModel !== 'REGULAR_EMPLOYMENT') {
+    const choices: {
+      model: BusinessModel;
+      title: string;
+      subtitle: string;
+      description: string;
+      available: boolean;
+    }[] = [
+      {
+        model: 'REGULAR_EMPLOYMENT',
+        title: 'Regular Employment',
+        subtitle: 'Hire Staff',
+        description: 'Hire one person for a permanent, contract, temporary, full-time or part-time role.',
+        available: true,
+      },
+      {
+        model: 'GIG_WORK',
+        title: 'Gig Work',
+        subtitle: 'Book a Service',
+        description: 'Arrange a one-time service booking.',
+        available: false,
+      },
+      {
+        model: 'BULK_MANPOWER',
+        title: 'Bulk Manpower',
+        subtitle: 'Hire a Team',
+        description: 'Request multiple workers for a team or workforce need.',
+        available: false,
+      },
+    ];
+
+    return (
+      <PageLayout>
+        <div className="mx-auto max-w-4xl space-y-6 px-1 sm:px-0">
+          <div>
+            <p className="text-sm font-medium text-neutral-500">Create a requirement</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">What do you need?</h1>
+            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+              Choose the type of work so we can use the right workflow.
+            </p>
+          </div>
+
+          {preferredWorker && (
+            <Card className="border-neutral-200 dark:border-neutral-800">
+              <CardContent className="flex items-center gap-3 p-4">
+                <Users className="h-5 w-5 text-neutral-500" />
+                <p className="text-sm">Selected worker: <span className="font-semibold">{preferredWorker.user?.name}</span></p>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="grid gap-4 md:grid-cols-3">
+            {choices.map((choice) => (
+              <button
+                key={choice.model}
+                type="button"
+                disabled={!choice.available}
+                onClick={() => setSelectedModel(choice.model)}
+                className={`rounded-xl border p-5 text-left transition-colors ${choice.available
+                  ? 'border-neutral-300 hover:border-neutral-900 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:border-neutral-300 dark:hover:bg-neutral-900'
+                  : 'cursor-not-allowed border-neutral-200 bg-neutral-50/70 text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/40 dark:text-neutral-500'}`}
+              >
+                <BriefcaseBusiness className="h-6 w-6" />
+                <h2 className="mt-4 text-lg font-semibold text-neutral-900 dark:text-neutral-100">{choice.title}</h2>
+                <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">{choice.subtitle}</p>
+                <p className="mt-2 min-h-12 text-sm text-neutral-600 dark:text-neutral-400">{choice.description}</p>
+                <p className="mt-4 text-xs font-medium">{choice.available ? 'Continue' : 'Coming soon'}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout>
@@ -157,7 +222,7 @@ export default function CreateRequirementPage() {
             <ClipboardList className="w-5 h-5 text-neutral-700 dark:text-neutral-300" />
           </div>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Post a Requirement</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Regular Employment – Staff Hiring</h1>
             <p className="text-neutral-600 dark:text-neutral-400 mt-1 text-sm sm:text-base">
               Tell us what kind of worker(s) you need — we'll match and assign candidates.
             </p>
@@ -289,12 +354,6 @@ export default function CreateRequirementPage() {
                 <Input id="minExperience" type="number" placeholder="e.g. 2" {...register('minExperience', { valueAsNumber: true })} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="requiredWorkerCount" className="flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-neutral-500" /> Number of Workers Required
-                </Label>
-                <Input id="requiredWorkerCount" type="number" min={1} {...register('requiredWorkerCount', { valueAsNumber: true })} />
-              </div>
-              <div className="space-y-2">
                 <Label>Work Mode</Label>
                 <Controller
                   name="workMode"
@@ -393,28 +452,11 @@ export default function CreateRequirementPage() {
             </div>
           </Section>
 
-          <Section title="Assignment Mode">
-            <div className="space-y-2">
-              <Label>How should we assign workers?</Label>
-              <Controller
-                name="assignmentMode"
-                control={control}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value ?? ''}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PREFERRED_SINGLE" disabled={!preferredWorker}>
-                        Preferred Worker Only{!preferredWorker ? ' (select a worker first)' : ''}
-                      </SelectItem>
-                      <SelectItem value="SINGLE_WITH_BACKUP">Single Worker + Backup Pool</SelectItem>
-                      <SelectItem value="BULK_WORKFORCE">Bulk Workforce</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
-
-            {currentAssignmentMode === 'SINGLE_WITH_BACKUP' && (
+          <Section title="Candidate matching">
+            <p className="text-sm text-neutral-600 dark:text-neutral-400">
+              This requirement is for one staff member. We’ll match a primary candidate and keep a backup pool available.
+            </p>
+            {!preferredWorker && (
               <div className="space-y-2">
                 <Label htmlFor="backupPoolSize">Backup Pool Size</Label>
                 <Input id="backupPoolSize" type="number" min={0} {...register('backupPoolSize', { valueAsNumber: true })} />

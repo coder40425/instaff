@@ -25,7 +25,7 @@ model SubCategory {
   slug         String        @unique
   categoryId   String
   isVisible    Boolean       @default(true)
-  isOptional   Boolean       @default(false) 
+  isOptional   Boolean       @default(false)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @default(now()) @updatedAt
   bookings     Booking[]
@@ -314,7 +314,7 @@ model Settlement {
 }
 
 model Booking {
-  id                    String        @id @default(cuid())
+  id                    String         @id @default(cuid())
   customerId            String
   workerId              String
   customerName          String
@@ -328,40 +328,65 @@ model Booking {
   durationMinutes       Int
   servicePrice          Float?
   notes                 String?
-  status                BookingStatus @default(PENDING)
+  status                BookingStatus  @default(PENDING)
   acceptedAt            DateTime?
   startedAt             DateTime?
   completedAt           DateTime?
   cancelledAt           DateTime?
   cancellationReason    String?
   cancelledBy           Role?
-  workerPayout          Float?        @default(0)
-  platformFee           Float?        @default(0)
-  isPaidToWorker        Boolean       @default(false)
+  workerPayout          Float?         @default(0)
+  platformFee           Float?         @default(0)
+  isPaidToWorker        Boolean        @default(false)
   paidAt                DateTime?
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @default(now()) @updatedAt
-  paymentStatus         PaymentStatus @default(PENDING)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @default(now()) @updatedAt
+  paymentStatus         PaymentStatus  @default(PENDING)
   paymentMethod         String?
-  startedByCustomer     Boolean       @default(false)
-  completedByCustomer   Boolean       @default(false)
-  replacementRequested  Boolean       @default(false)
+  startedByCustomer     Boolean        @default(false)
+  completedByCustomer   Boolean        @default(false)
+  replacementRequested  Boolean        @default(false)
   replacementReason     String?
   replacementWorkerId   String?
   replacementAssignedAt DateTime?
-  isPaidByCustomer      Boolean       @default(false)
+  isPaidByCustomer      Boolean        @default(false)
   paidByCustomerAt      DateTime?
   subCategoryId         String
-  customer              User          @relation("CustomerBookings", fields: [customerId], references: [id])
-  subCategory           SubCategory   @relation(fields: [subCategoryId], references: [id])
-  worker                User          @relation("WorkerBookings", fields: [workerId], references: [id])
+  customer              User           @relation("CustomerBookings", fields: [customerId], references: [id])
+  subCategory           SubCategory    @relation(fields: [subCategoryId], references: [id])
+  worker                User           @relation("WorkerBookings", fields: [workerId], references: [id])
   complaints            Complaint[]
   review                Review?
+  businessModel         BusinessModel  @default(GIG_WORK)
+  serviceFormat         ServiceFormat  @default(ONE_TIME)
+  visits                BookingVisit[]
 
   @@index([customerId])
   @@index([workerId])
   @@index([status])
   @@index([subCategoryId])
+}
+
+model BookingVisit {
+  id                 String             @id @default(cuid())
+  bookingId          String
+  sequence           Int
+  scheduledDate      DateTime
+  durationMinutes    Int
+  status             BookingVisitStatus @default(SCHEDULED)
+  startedAt          DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+
+  @@unique([bookingId, sequence])
+  @@unique([bookingId, scheduledDate])
+  @@index([bookingId, status])
+  @@index([scheduledDate])
 }
 
 model Review {
@@ -403,6 +428,30 @@ enum Role {
   ADMIN
   EMPLOYER
   PARTNER
+}
+
+enum BusinessModel {
+  REGULAR_EMPLOYMENT
+  GIG_WORK
+  BULK_MANPOWER
+}
+
+enum ServiceFormat {
+  ONE_TIME
+  HOURLY
+  SESSION
+  DAILY
+  MULTIPLE_VISITS
+  WEEKLY
+  MONTHLY
+}
+
+enum BookingVisitStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
 }
 
 enum Gender {
@@ -614,6 +663,7 @@ model Requirement {
   candidates          RequirementCandidate[]
   replacementRequests ReplacementRequest[]
   commissions         PartnerCommission[]
+  businessModel       BusinessModel          @default(REGULAR_EMPLOYMENT)
 
   @@index([createdById])
   @@index([categoryId])

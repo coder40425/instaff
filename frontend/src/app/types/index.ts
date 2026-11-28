@@ -42,6 +42,11 @@ export type EducationLevel =
   | 'ON_CALL'
   | 'INTERNSHIP';
 
+export type BusinessModel =
+  | 'REGULAR_EMPLOYMENT'
+  | 'GIG_WORK'
+  | 'BULK_MANPOWER';
+
 export type WorkMode = 'ON_SITE' | 'REMOTE';
 
 export type WorkGeography = 'DOMESTIC' | 'INTERNATIONAL';
@@ -257,6 +262,7 @@ export interface Booking {
   servicePrice: number;
   notes?: string;
   status: BookingStatus;
+  businessModel: BusinessModel;
   paymentStatus: PaymentStatus;
   cancelledAt?: string | null;
   cancellationReason?: string | null;
@@ -394,6 +400,7 @@ export interface RequirementReplacementRequest {
 }
 
 export interface CreateRequirementPayload {
+  businessModel: BusinessModel;
   categoryId: string;
   subCategoryId: string;
   city: string;
@@ -460,6 +467,7 @@ export interface WorkerRequirementOffer {
   } | null;
   requirement: {
     id: string;
+    businessModel: BusinessModel;
     source: RequirementSource;
     status: RequirementStatus;
     city: string;
@@ -507,6 +515,7 @@ export interface WorkerRequirementOfferActionResult {
 
 export interface Requirement {
   id: string;
+  businessModel: BusinessModel;
   createdById: string;
 
   categoryId: string;

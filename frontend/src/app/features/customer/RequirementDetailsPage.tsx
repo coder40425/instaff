@@ -528,6 +528,14 @@ export default function RequirementDetailsPage() {
                       'Worker Requirement'}
                   </CardTitle>
 
+                  <Badge variant="outline">
+                    {requirement.businessModel === 'REGULAR_EMPLOYMENT'
+                      ? 'Regular Employment – Staff Hiring'
+                      : requirement.businessModel === 'BULK_MANPOWER'
+                        ? 'Bulk Manpower – Team Hiring'
+                        : 'Gig Work – Service Booking'}
+                  </Badge>
+
                   <Badge className={REQUIREMENT_STATUS_STYLES[requirement.status]}>
                     {requirement.status}
                   </Badge>

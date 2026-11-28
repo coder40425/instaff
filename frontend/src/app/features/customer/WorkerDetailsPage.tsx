@@ -245,7 +245,7 @@ export default function WorkerDetailsPage() {
                 <Button
                   size="lg"
                   className="w-full sm:w-auto mt-4 gap-2"
-                  onClick={() => navigate('/booking/create', { state: { worker } })}
+                  onClick={() => navigate('/customer/requirements/new', { state: { worker } })}
                 >
                   <ClipboardList className="w-4 h-4" />
                   Create Requirement
